@@ -1,19 +1,28 @@
 def center_of_mass(coords, masses):
     return np.array([np.sum((coords[:,i] * masses)) for i in range(3)])/np.sum(masses)
 
-def halo_center(coords, masses):
-    '''See Power et al. 2003.'''
+@njit
+def dist(r1, r0):
+    res = np.zeros_like(r1[:,0])
+
+    rrel = r1 - r0
+    for i in range(len(res)):
+        for j in range(3):
+            res[i] += rrel[i][j]**2
+        res[i] = np.sqrt(res[i])
+    return res
+
+def halo_center(coords, masses, shrinkpercent=2.5, minparticles=1000, initialradiusfactor=1, verbose=False):
+    '''See Power et al. 2003.
+    default: shrinkpercent=2.5, minparticles=1000, initialradiusfactor=1
+    '''
     com = center_of_mass(coords, masses)
 
-    coordsrel = coords - com
-    r = np.linalg.norm(coordsrel, axis=1)
+    r = dist(coords, com)
     
-    radius = r.max()
+    radius = r.max()*initialradiusfactor
 
-    Nconverge = min(1000, len(masses)*0.01)
-
-    # mask = np.full_like(masses, True, bool)
-
+    Nconverge = min(minparticles, len(masses)*0.01)
     iteration = 0
 
     coords_it = coords.copy()
@@ -23,7 +32,7 @@ def halo_center(coords, masses):
     radiuslist = [radius]
 
     while len(masses_it) > Nconverge:
-        radius *= (100-2.5)/100
+        radius *= (100-shrinkpercent)/100
 
         mask = r <= radius
         coords_it = coords_it[mask, :]
@@ -31,18 +40,18 @@ def halo_center(coords, masses):
 
         com = center_of_mass(coords_it, masses_it)
 
-        coordsrel = coords_it - com
-        r = np.linalg.norm(coordsrel, axis=1)
+        r = dist(coords_it, com)
         
         iteration += 1
         comlist.append(com)
         radiuslist.append(radius)
 
-        print(iteration, radius, np.format_float_scientific(len(masses_it)), com)
+        if verbose:
+            print(iteration, radius, np.format_float_scientific(len(masses_it)), com)
     
     return com, comlist, radiuslist
 
-def halo_center_wrapper(pdata):
+def halo_center_wrapper(pdata, shrinkpercent=50, minparticles=1000, initialradiusfactor=0.25):
     coords = pdata['Coordinates']
     masses = pdata['Masses']
-    return halo_center(coords, masses)
+    return halo_center(coords, masses, shrinkpercent, minparticles, initialradiusfactor)
