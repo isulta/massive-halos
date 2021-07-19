@@ -17,3 +17,5 @@ export PYTHONPATH="${PYTHONPATH}:/home/jovyan/home/tools"
 cd /home/jovyan/home/projects/massive-halos
 git config --global user.email "isultan030@gmail.com"
 git config --global user.name "Imran Sultan"
+git config --global alias.st status
+git config --global alias.ci commit
