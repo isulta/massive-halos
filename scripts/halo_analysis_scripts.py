@@ -55,6 +55,61 @@ def halo_center_wrapper(pdata, shrinkpercent=50, minparticles=1000, initialradiu
     masses = pdata['Masses']
     return halo_center(coords, masses, shrinkpercent, minparticles, initialradiusfactor)
 
+### TD profiles ###
+def load_p0(snapdir, snapnum, ahf_path=None, Rvir=None):
+    '''Loads gas particle snapshot and adds `CoordinatesRelative`, `r`, `r_scaled`, `Vi`, `posC`, and `Rvir` columns to dictionary.'''
+    p0 = openSnapshot(snapdir, snapnum, 0, loud=1)
+    p1 = openSnapshot(snapdir, snapnum, 1, loud=1, keys_to_extract=['Coordinates', 'Masses'])
+    
+    print(f"Loading redshift {p0['Redshift']}")
+
+    posC = halo_center_wrapper(p1)[0]
+
+    if ahf_path:
+        _, Rvir = load_AHF('', snapnum, p0['Redshift'], hubble=p0['HubbleParam'], ahf_path=ahf_path, extra_names_to_read=[])
+
+    # position relative to center
+    p0['CoordinatesRelative'] = p0['Coordinates'] - posC
+
+    # distance from halo center
+    p0['r'] = np.linalg.norm(p0['CoordinatesRelative'], axis=1)
+
+    # distance from halo center in units of virial radius
+    p0['r_scaled'] = p0['r']/Rvir
+
+    # volume of each particle
+    p0['Vi'] = p0['Masses']/p0['Density']
+    
+    p0['posC'] = posC
+    p0['Rvir'] = Rvir
+    
+    return p0
+
+def profiles( p0, Tmask=True, rbins=np.power(10, np.arange(np.log10(0.005258639741921723), np.log10(1.9597976388995666), 0.05)), outfile=None ):
+    '''
+    Default Tmask and rbins chosen to match Stern+20 Fig. 6.
+    Input gas particle snapshot dict `p0` must have `r_scaled`, `Vi`, `posC`, and `Rvir` columns.
+    If `outfile` is defined, a pickled dict of the profiles is saved to disk.
+    '''
+    rmid = (rbins[:-1]+rbins[1:])/2
+    logTavgbins = []
+    rhoavgbins = []
+
+    for r0,r1 in zip(rbins[:-1],rbins[1:]):
+        idx = np.flatnonzero(Tmask & inrange( p0['r_scaled'], (r0, r1) ))
+
+        # Temperature profile
+        logTavg = np.sum(np.log10(p0['Temperature'][idx]) * p0['Vi'][idx]) / np.sum(p0['Vi'][idx])
+        logTavgbins.append(logTavg)
+
+        # Density profile
+        rhoavg = np.sum(p0['Masses'][idx]) / np.sum(p0['Vi'][idx])
+        rhoavgbins.append(rhoavg)
+    
+    if outfile:
+        pickle_save_dict(outfile, {'rmid':rmid, 'logTavgbins':logTavgbins, 'rhoavgbins':rhoavgbins, 'posC':p0['posC'], 'Rvir':p0['Rvir']})
+    
+    return rmid, logTavgbins
 
 ### COSMOLOGY CODE ###
 def Ez(OmegaM0, OmegaL0, z):
