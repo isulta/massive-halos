@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 cd /home/jovyan/home
-conda install vim htop numpy matplotlib numba git astropy pyyaml
+conda install vim htop numpy matplotlib numba git astropy pyyaml tqdm
 
 mkdir tools projects
 
