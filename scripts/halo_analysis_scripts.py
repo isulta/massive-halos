@@ -56,12 +56,13 @@ def halo_center_wrapper(pdata, shrinkpercent=50, minparticles=1000, initialradiu
     return halo_center(coords, masses, shrinkpercent, minparticles, initialradiusfactor)
 
 ### TD profiles ###
-def load_p0(snapdir, snapnum, ahf_path=None, Rvir=None):
+def load_p0(snapdir, snapnum, ahf_path=None, Rvir=None, loud=1):
     '''Loads gas particle snapshot and adds `CoordinatesRelative`, `r`, `r_scaled`, `Vi`, `posC`, and `Rvir` columns to dictionary.'''
-    p0 = openSnapshot(snapdir, snapnum, 0, loud=1)
-    p1 = openSnapshot(snapdir, snapnum, 1, loud=1, keys_to_extract=['Coordinates', 'Masses'])
+    p0 = openSnapshot(snapdir, snapnum, 0, loud=loud)
+    p1 = openSnapshot(snapdir, snapnum, 1, loud=loud, keys_to_extract=['Coordinates', 'Masses'])
     
-    print(f"Loading redshift {p0['Redshift']}")
+    if loud:
+        print(f"Loading redshift {p0['Redshift']}")
 
     posC = halo_center_wrapper(p1)[0]
 
