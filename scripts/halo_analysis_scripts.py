@@ -1,3 +1,6 @@
+import numpy as np
+from numba import njit
+
 def center_of_mass(coords, masses):
     return np.array([np.sum((coords[:,i] * masses)) for i in range(3)])/np.sum(masses)
 
@@ -12,7 +15,7 @@ def dist(r1, r0):
         res[i] = np.sqrt(res[i])
     return res
 
-def halo_center(coords, masses, shrinkpercent=2.5, minparticles=1000, initialradiusfactor=1, verbose=False):
+def halo_center(coords, masses, shrinkpercent=50, minparticles=1000, initialradiusfactor=0.25, verbose=False):
     '''See Power et al. 2003 (their parameter values: shrinkpercent=2.5, minparticles=1000, initialradiusfactor=1)
     '''
     com = center_of_mass(coords, masses)
