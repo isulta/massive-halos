@@ -113,9 +113,13 @@ def profiles( p0, Tmask=True, rbins=np.power(10, np.arange(np.log10(0.0052586397
     if outfile:
         pickle_save_dict(outfile, {'rmid':rmid, 'logTavgbins':logTavgbins, 'rhoavgbins':rhoavgbins, 'posC':p0['posC'], 'Rvir':p0['Rvir']})
     
-    return rmid, logTavgbins
+    return rmid, logTavgbins, rhoavgbins
 
 ### COSMOLOGY CODE ###
+def scale_factor_to_redshift(a):
+    z = 1/a - 1
+    return z
+
 def Ez(OmegaM0, OmegaL0, z):
     return ( OmegaM0*(1+z)**3 + OmegaL0 )**0.5
 
