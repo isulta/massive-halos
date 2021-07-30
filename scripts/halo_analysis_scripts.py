@@ -115,6 +115,68 @@ def profiles( p0, Tmask=True, rbins=np.power(10, np.arange(np.log10(0.0052586397
     
     return rmid, logTavgbins, rhoavgbins
 
+def profiles_zbins(snapdir, redshifts, Rvir_allsnaps, zmin=1, zmax=4, zbinwidth=0.5, outfile=None):
+    '''Compute profiles for all snapshots in each redshift bin.
+
+    Parameters:
+        `snapdir`: directory with snapshots
+        `redshifts`: 1d array where `redshifts[i]` is the redshift at snapshot `i`
+        `Rvir_allsnaps`: 1d array where `Rvir_allsnaps[i]` is the virial radius (in kpc) at snapshot `i`
+        `zmin`, `zmax`, `zbinwidth`: redshift bins will be created with edges `z=[z0,z0+zbinwidth)`, where `z0` is in `np.arange(zmin,zmax,zbinwidth)`
+    Returns:
+        Dictionary where each key is a redshift bin, and each item is a list of `(rmid, logTavgbins, rhoavgbins)` calculated for each snapshot in that redshift bin.
+        Output will be pickled and saved to disk if `outfile` is passed (output file path/name).
+    '''
+    allprofiles = {}
+    for z0 in np.arange(zmin,zmax,zbinwidth):
+        allprofiles[z0] = []
+        z1 = z0 + zbinwidth
+        
+        print(f'Beginning bin from z={z0} to {z1}.')
+        snapnums_bin = np.flatnonzero(inrange(redshifts, (z0,z1), right_bound_inclusive=False))
+        snapnum_median = snapnums_bin[len(snapnums_bin)//2]
+        Rvir = Rvir_allsnaps[snapnum_median]
+        print(f'Median redshift is {redshifts[snapnum_median]} with snapnum {snapnum_median} and virial radius {Rvir} kpc.')
+        
+        print(f'Computing profiles for snapshots {snapnums_bin.min()} to {snapnums_bin.max()}.')
+        for snapnum in tqdm(snapnums_bin):
+            p0 = load_p0(f'/projects/b1026/anglesd/FIRE/{simname}', snapnum, Rvir=Rvir, loud=0)
+            allprofiles[z0].append( profiles(p0) )
+    
+    if outfile:
+        pickle_save_dict(outfile, {'allprofiles':allprofiles})
+    return allprofiles
+
+def plot_rho_profiles_zbins(allprofiles, zbinwidth=0.5, simname='', outfile='', rbins=np.power(10, np.arange(np.log10(0.005258639741921723), np.log10(1.9597976388995666), 0.05))):
+    '''Plots mean and median rho profile for every redshift bin in `allprofiles`.
+    
+    Parameters:
+        `allprofiles`: output of `profiles_zbins`
+        `zbinwidth`: width of redshift bins
+        `simname`: simulation name for plot title
+        `outfile`: output file path/name with extension
+    '''
+    # For each redshift bin, create 2D array where the rows are rho profiles for every snapshot in bin
+    all_rhoavgbins = {k:np.array([rhoavgbins for rmid, logTavgbins, rhoavgbins in profiles_zbin]) for k,profiles_zbin in allprofiles.items()}
+
+    # For each redshift bin, plot mean and median rho profile
+    rmid = (rbins[:-1]+rbins[1:])/2
+
+    plt.figure(dpi=120)
+    for z0, c in zip(all_rhoavgbins.keys(), COLOR_SCHEME):
+        rhoavgbins_mean = np.mean(all_rhoavgbins[z0], axis=0)
+        rhoavgbins_median = np.median(all_rhoavgbins[z0], axis=0)
+        plt.plot(np.log10(rmid), np.log10(rhoavgbins_mean), '-', label=f'z=[{z0},{z0+zbinwidth})', c=c)
+        plt.plot(np.log10(rmid), np.log10(rhoavgbins_median), '--', c=c)
+
+    plt.xlabel(r'$\log (r/R_{vir})$')
+    plt.ylabel(r'$\log \left<\rho \right>$')
+    plt.legend()
+    plt.title(simname)
+
+    if outfile:
+        plt.savefig(outfile)
+
 ### COSMOLOGY CODE ###
 def scale_factor_to_redshift(a):
     z = 1/a - 1
