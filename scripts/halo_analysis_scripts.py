@@ -121,7 +121,7 @@ def profiles_zbins(snapdir, redshifts, Rvir_allsnaps, zmin=1, zmax=4, zbinwidth=
     Parameters:
         `snapdir`: directory with snapshots
         `redshifts`: 1d array where `redshifts[i]` is the redshift at snapshot `i`
-        `Rvir_allsnaps`: 1d array where `Rvir_allsnaps[i]` is the virial radius (in kpc) at snapshot `i`
+        `Rvir_allsnaps`: dictionary where `Rvir_allsnaps[i]` is the virial radius (in kpc) at snapshot `i`
         `zmin`, `zmax`, `zbinwidth`: redshift bins will be created with edges `z=[z0,z0+zbinwidth)`, where `z0` is in `np.arange(zmin,zmax,zbinwidth)`
     Returns:
         Dictionary where each key is a redshift bin, and each item is a list of `(rmid, logTavgbins, rhoavgbins)` calculated for each snapshot in that redshift bin.
@@ -140,7 +140,7 @@ def profiles_zbins(snapdir, redshifts, Rvir_allsnaps, zmin=1, zmax=4, zbinwidth=
         
         print(f'Computing profiles for snapshots {snapnums_bin.min()} to {snapnums_bin.max()}.')
         for snapnum in tqdm(snapnums_bin):
-            p0 = load_p0(f'/projects/b1026/anglesd/FIRE/{simname}', snapnum, Rvir=Rvir, loud=0)
+            p0 = load_p0(snapdir, snapnum, Rvir=Rvir, loud=0)
             allprofiles[z0].append( profiles(p0) )
     
     if outfile:
