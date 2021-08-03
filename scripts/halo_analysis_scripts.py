@@ -1,3 +1,20 @@
+# good AGN feedback models
+CCAbaseDir = '/home/jovyan/fire2/AGN_suite/'
+CCA_sims = {
+    'push':{
+        'h206':CCAbaseDir+'m13h206_m3e5/m13h206_m3e5_push_alpha10_gacc30_accf1_vw10000_cr1e-2_msd1e-8_sdp3e-3_mw4e-7_fa0.5_tw1e4_fmom1',
+        'h29':CCAbaseDir+'m13h29_m3e5/m13h29_m3e5_push_alpha10_gacc30_accf1_vw10000_cr1e-2_msd1e-8_sdp5e-3_mw4e-7_fa0.5_tw1e4_fmom1'
+    },
+    'jet':{
+        'h206':CCAbaseDir+'m13h206_m3e5/m13h206_m3e5_jet_alpha10_gacc30_accf1_vw10000_cr1e-2_msd1e-8_sdp3e-3_mw4e-7_fa0.5_tw1e4_fmom1'
+    },
+    'spawn':{
+        'h206':CCAbaseDir+'m13h206_m3e5/m13h206_m3e5_spawn_alpha10_gacc30_accf1_vw10000_cr1e-2_msd1e-8_sdp3e-3_mw4e-7_fa0.5_tw1e4_fmom1'
+    }
+}
+
+COLOR_SCHEME = ['#2402ba','#b400e0','#98c1d9','#ff0000','#292800','#ff9b71']
+
 import numpy as np
 from numba import njit
 from abg_python.snapshot_utils import openSnapshot

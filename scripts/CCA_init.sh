@@ -8,6 +8,7 @@ mkdir tools projects
 cd tools
 git clone https://github.com/isulta/itk
 git clone https://github.com/agurvich/abg_python
+git clone https://github.com/agurvich/FIRE_studio
 
 cd ../projects
 git clone https://github.com/isulta/massive-halos
