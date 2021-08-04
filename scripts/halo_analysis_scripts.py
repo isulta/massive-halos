@@ -20,6 +20,15 @@ from numba import njit
 from abg_python.snapshot_utils import openSnapshot
 from abg_python.cosmo_utils import load_AHF
 
+def redshifts_snapshots(simdir, snapshot_scalefactors_file = 'snapshot_scale-factors.txt'):
+    '''Loads redshifts of the snapshots of a simulation.
+    Returns array `redshifts` where `redshifts[i]` is the redshift of snapshot `i`.
+    '''
+    scale_factors = np.loadtxt(f'{simdir}/{snapshot_scalefactors_file}')
+    redshifts = scale_factor_to_redshift(scale_factors)
+    return redshifts
+
+### Halo centering ###
 def center_of_mass(coords, masses):
     return np.array([np.sum((coords[:,i] * masses)) for i in range(3)])/np.sum(masses)
 
@@ -78,9 +87,9 @@ def halo_center_wrapper(pdata, shrinkpercent=50, minparticles=1000, initialradiu
     return halo_center(coords, masses, shrinkpercent, minparticles, initialradiusfactor)
 
 ### TD profiles ###
-def load_p0(snapdir, snapnum, ahf_path=None, Rvir=None, loud=1):
+def load_p0(snapdir, snapnum, ahf_path=None, Rvir=None, loud=1, keys_to_extract=None, calculate_qtys=True):
     '''Loads gas particle snapshot and adds `CoordinatesRelative`, `r`, `r_scaled`, `Vi`, `posC`, and `Rvir` columns to dictionary.'''
-    p0 = openSnapshot(snapdir, snapnum, 0, loud=loud)
+    p0 = openSnapshot(snapdir, snapnum, 0, loud=loud, keys_to_extract=keys_to_extract)
     p1 = openSnapshot(snapdir, snapnum, 1, loud=loud, keys_to_extract=['Coordinates', 'Masses'])
     
     if loud:
@@ -93,20 +102,30 @@ def load_p0(snapdir, snapnum, ahf_path=None, Rvir=None, loud=1):
 
     # position relative to center
     p0['CoordinatesRelative'] = p0['Coordinates'] - posC
-
-    # distance from halo center
-    p0['r'] = np.linalg.norm(p0['CoordinatesRelative'], axis=1)
-
-    # distance from halo center in units of virial radius
-    p0['r_scaled'] = p0['r']/Rvir
-
-    # volume of each particle
-    p0['Vi'] = p0['Masses']/p0['Density']
     
-    p0['posC'] = posC
-    p0['Rvir'] = Rvir
+    if calculate_qtys:
+        # distance from halo center
+        p0['r'] = np.linalg.norm(p0['CoordinatesRelative'], axis=1)
+
+        # distance from halo center in units of virial radius
+        p0['r_scaled'] = p0['r']/Rvir
+
+        # volume of each particle
+        p0['Vi'] = p0['Masses']/p0['Density']
+
+        p0['posC'] = posC
+        p0['Rvir'] = Rvir
     
     return p0
+
+def load_p0_allsnaps(snapdir, snapnums, Rvir=1, 
+                     keys_to_extract=['Coordinates','Masses','Metallicity','SmoothingLength','Temperature'], 
+                     calculate_qtys=False):
+    p0_allsnaps = []
+    for snapnum in tqdm(range(snapnums)):
+        p0 = load_p0(snapdir, snapnum, Rvir=Rvir, loud=False, keys_to_extract=keys_to_extract, calculate_qtys=calculate_qtys)
+        p0_allsnaps.append(p0)
+    return p0_allsnaps
 
 def profiles( p0, Tmask=True, rbins=np.power(10, np.arange(np.log10(0.005258639741921723), np.log10(1.9597976388995666), 0.05)), outfile=None ):
     '''
