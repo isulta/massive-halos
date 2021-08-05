@@ -2,6 +2,7 @@
 
 cd /home/jovyan/home
 conda install vim htop numpy matplotlib numba git astropy pyyaml tqdm
+conda install -c conda-forge ffmpeg
 
 mkdir tools projects
 
