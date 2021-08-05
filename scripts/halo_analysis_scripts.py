@@ -215,7 +215,7 @@ def plot_rho_profiles_zbins(allprofiles, zbinwidth=0.5, simname='', outfile='', 
     if outfile:
         plt.savefig(outfile)
 
-def plot_profiles_zbins(allprofiles, ax, profiletype='rho', zbinwidth=0.5, rbins=np.power(10, np.arange(np.log10(0.005258639741921723), np.log10(1.9597976388995666), 0.05)), cmap=plt.cm.Reds):
+def plot_profiles_zbins(allprofiles, ax, profiletype='rho', zbinwidth=0.5, rbins=np.power(10, np.arange(np.log10(0.005258639741921723), np.log10(1.9597976388995666), 0.05)), cmap=plt.cm.Reds, xlabel=False, ylabel=False):
     '''Plots median rho or T profile for every redshift bin in `allprofiles`.
     
     Parameters:
@@ -228,12 +228,14 @@ def plot_profiles_zbins(allprofiles, ax, profiletype='rho', zbinwidth=0.5, rbins
     # For each redshift bin, plot median rho profile
     rmid = (rbins[:-1]+rbins[1:])/2
 
-    for z0, c in zip( sorted(all_rhoavgbins.keys()), cmap(np.linspace(0,1,len(all_rhoavgbins.keys()))) ):
+    for z0, c in zip( sorted(all_rhoavgbins.keys()), cmap(np.linspace(0.1,1,len(all_rhoavgbins.keys()))) ):
         rhoavgbins_median = np.median(all_rhoavgbins[z0], axis=0)
         ax.plot(np.log10(rmid), np.log10(rhoavgbins_median) if profiletype=='rho' else rhoavgbins_median, '-', label=f'z=[{z0},{z0+zbinwidth})', c=c)
-
-    ax.set_xlabel(r'$\log (r/R_{vir})$')
-    ax.set_ylabel(r'mean $\log \left<\rho \right>$' if profiletype=='rho' else r'mean $\left<\log \left(T/\mathrm{K}\right)\right>$')
+    
+    if xlabel:
+        ax.set_xlabel(r'$\log (r/R_{vir})$')
+    if ylabel:
+        ax.set_ylabel('median ' + (r'$\log \left<\rho \right>$' if profiletype=='rho' else r'$\left<\log \left(T/\mathrm{K}\right)\right>$'))
 
 ### COSMOLOGY CODE ###
 def scale_factor_to_redshift(a):
