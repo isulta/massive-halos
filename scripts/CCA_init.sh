@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
 cd /home/jovyan/home
-conda install vim htop numpy matplotlib numba git astropy pyyaml tqdm
-conda install -c conda-forge ffmpeg
+conda install -y vim htop numpy matplotlib numba git astropy pyyaml tqdm hdf5
+conda install -y -c conda-forge ffmpeg
 
 mkdir tools projects
 
