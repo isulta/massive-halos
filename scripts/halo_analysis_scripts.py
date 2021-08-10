@@ -235,14 +235,14 @@ def plot_profiles_zbins(allprofiles, ax, profiletype='rho', zbinwidth=0.5, rbins
     # For each redshift bin, plot median profile
     rmid = (rbins[:-1]+rbins[1:])/2
 
-    for z0, c in zip( sorted(all_profileavgbins.keys()), cmap(np.linspace(0.1,1,len(all_profileavgbins.keys()))) ):
+    for z0, c in zip( sorted(all_profileavgbins.keys()), cmap(np.linspace(0.1,1,len(all_profileavgbins.keys())))[::-1] ):
         profileavgbins_median = np.median(all_profileavgbins[z0], axis=0)
         ax.plot(np.log10(rmid), np.log10(profileavgbins_median) if (profiletype=='rho' or profiletype=='e_CR') else profileavgbins_median, '-', label=f'z=[{z0},{z0+zbinwidth})', c=c)
     
     if xlabel:
         ax.set_xlabel(r'$\log (r/R_{vir})$')
     if ylabel:
-        ax.set_ylabel( 'median ' + (r'$\log \left<\rho \right>$' if profiletype=='rho' else r'$\left<\log \left(T/\mathrm{K}\right)\right>$' if profiletype=='T' else r'$\log \left<\epsilon_{CR} \right>$') )
+        ax.set_ylabel( (r'$\log \mathrm{median}\ \left<\rho \right>$' if profiletype=='rho' else r'median $\left<\log \left(T/\mathrm{K}\right)\right>$' if profiletype=='T' else r'$\log \mathrm{median}\ \left<\epsilon_{CR} \right>$') )
 
 ### COSMOLOGY CODE ###
 def scale_factor_to_redshift(a):
