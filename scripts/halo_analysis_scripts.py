@@ -16,6 +16,7 @@ CCA_sims = {
 COLOR_SCHEME = ['#2402ba','#b400e0','#98c1d9','#ff0000','#292800','#ff9b71']
 
 import numpy as np
+import matplotlib.pyplot as plt
 from numba import njit
 from abg_python.snapshot_utils import openSnapshot
 from abg_python.cosmo_utils import load_AHF
@@ -136,6 +137,7 @@ def profiles( p0, Tmask=True, rbins=np.power(10, np.arange(np.log10(0.0052586397
     rmid = (rbins[:-1]+rbins[1:])/2
     logTavgbins = []
     rhoavgbins = []
+    CReavgbins = []
 
     for r0,r1 in zip(rbins[:-1],rbins[1:]):
         idx = np.flatnonzero(Tmask & inrange( p0['r_scaled'], (r0, r1) ))
@@ -147,14 +149,18 @@ def profiles( p0, Tmask=True, rbins=np.power(10, np.arange(np.log10(0.0052586397
         # Density profile
         rhoavg = np.sum(p0['Masses'][idx]) / np.sum(p0['Vi'][idx])
         rhoavgbins.append(rhoavg)
+        
+        # CR energy density (e) profile
+        CReavg = np.sum(p0['CosmicRayEnergy'][idx]) / np.sum(p0['Vi'][idx])
+        CReavgbins.append(CReavg)
     
     if outfile:
-        pickle_save_dict(outfile, {'rmid':rmid, 'logTavgbins':logTavgbins, 'rhoavgbins':rhoavgbins, 'posC':p0['posC'], 'Rvir':p0['Rvir']})
+        pickle_save_dict(outfile, {'rmid':rmid, 'logTavgbins':logTavgbins, 'rhoavgbins':rhoavgbins, 'CReavgbins':CReavgbins, 'posC':p0['posC'], 'Rvir':p0['Rvir']})
     
-    return rmid, logTavgbins, rhoavgbins
+    return rmid, logTavgbins, rhoavgbins, CReavgbins
 
 def profiles_zbins(snapdir, redshifts, Rvir_allsnaps, zmin=1, zmax=4, zbinwidth=0.5, outfile=None):
-    '''Compute profiles for all snapshots in each redshift bin.
+    '''Compute profiles for all snapshots in each redshift bin. In each redshift bin, the virial radius at the median (center) snapshot is used.
 
     Parameters:
         `snapdir`: directory with snapshots
@@ -195,7 +201,7 @@ def plot_rho_profiles_zbins(allprofiles, zbinwidth=0.5, simname='', outfile='', 
         `outfile`: output file path/name with extension
     '''
     # For each redshift bin, create 2D array where the rows are rho profiles for every snapshot in bin
-    all_rhoavgbins = {k:np.array([rhoavgbins for rmid, logTavgbins, rhoavgbins in profiles_zbin]) for k,profiles_zbin in allprofiles.items()}
+    all_rhoavgbins = {k:np.array([rhoavgbins for rmid, logTavgbins, rhoavgbins, CReavgbins in profiles_zbin]) for k,profiles_zbin in allprofiles.items()}
 
     # For each redshift bin, plot mean and median rho profile
     rmid = (rbins[:-1]+rbins[1:])/2
@@ -223,7 +229,7 @@ def plot_profiles_zbins(allprofiles, ax, profiletype='rho', zbinwidth=0.5, rbins
         `zbinwidth`: width of redshift bins
     '''
     # For each redshift bin, create 2D array where the rows are rho profiles for every snapshot in bin
-    all_rhoavgbins = {k:np.array([(rhoavgbins if profiletype=='rho' else logTavgbins) for rmid, logTavgbins, rhoavgbins in profiles_zbin]) for k,profiles_zbin in allprofiles.items()}
+    all_rhoavgbins = {k:np.array([(rhoavgbins if profiletype=='rho' else logTavgbins) for rmid, logTavgbins, rhoavgbins, CReavgbins in profiles_zbin]) for k,profiles_zbin in allprofiles.items()}
 
     # For each redshift bin, plot median rho profile
     rmid = (rbins[:-1]+rbins[1:])/2
