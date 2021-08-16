@@ -138,6 +138,7 @@ def profiles( p0, Tmask=True, rbins=np.power(10, np.arange(np.log10(0.0052586397
     logTavgbins = []
     rhoavgbins = []
     CReavgbins = []
+    logPthavgbins = []
 
     for r0,r1 in zip(rbins[:-1],rbins[1:]):
         idx = np.flatnonzero(Tmask & inrange( p0['r_scaled'], (r0, r1) ))
@@ -153,11 +154,16 @@ def profiles( p0, Tmask=True, rbins=np.power(10, np.arange(np.log10(0.0052586397
         # CR energy density (e) profile
         CReavg = np.sum(p0['CosmicRayEnergy'][idx]) / np.sum(p0['Vi'][idx])
         CReavgbins.append(CReavg)
+
+        # thermal pressure profile
+        logPth = np.log10( 2/3 * p0['InternalEnergy'][idx] * p0['Density'][idx] )
+        logPthavg = np.sum(logPth * p0['Vi'][idx]) / np.sum(p0['Vi'][idx])
+        logPthavgbins.append(logPthavg)
     
     if outfile:
-        pickle_save_dict(outfile, {'rmid':rmid, 'logTavgbins':logTavgbins, 'rhoavgbins':rhoavgbins, 'CReavgbins':CReavgbins, 'posC':p0['posC'], 'Rvir':p0['Rvir']})
+        pickle_save_dict(outfile, {'rmid':rmid, 'logTavgbins':logTavgbins, 'rhoavgbins':rhoavgbins, 'CReavgbins':CReavgbins, 'logPthavgbins':logPthavgbins, 'posC':p0['posC'], 'Rvir':p0['Rvir']})
     
-    return rmid, logTavgbins, rhoavgbins, CReavgbins
+    return rmid, logTavgbins, rhoavgbins, CReavgbins, logPthavgbins
 
 def profiles_zbins(snapdir, redshifts, Rvir_allsnaps, zmin=1, zmax=4, zbinwidth=0.5, outfile=None):
     '''Compute profiles for all snapshots in each redshift bin. In each redshift bin, the virial radius at the median (center) snapshot is used.
@@ -201,7 +207,7 @@ def plot_rho_profiles_zbins(allprofiles, zbinwidth=0.5, simname='', outfile='', 
         `outfile`: output file path/name with extension
     '''
     # For each redshift bin, create 2D array where the rows are rho profiles for every snapshot in bin
-    all_rhoavgbins = {k:np.array([rhoavgbins for rmid, logTavgbins, rhoavgbins, CReavgbins in profiles_zbin]) for k,profiles_zbin in allprofiles.items()}
+    all_rhoavgbins = {k:np.array([rhoavgbins for rmid, logTavgbins, rhoavgbins, CReavgbins, logPthavgbins in profiles_zbin]) for k,profiles_zbin in allprofiles.items()}
 
     # For each redshift bin, plot mean and median rho profile
     rmid = (rbins[:-1]+rbins[1:])/2
@@ -222,15 +228,15 @@ def plot_rho_profiles_zbins(allprofiles, zbinwidth=0.5, simname='', outfile='', 
         plt.savefig(outfile)
 
 def plot_profiles_zbins(allprofiles, ax, profiletype='rho', zbinwidth=0.5, rbins=np.power(10, np.arange(np.log10(0.005258639741921723), np.log10(1.9597976388995666), 0.05)), cmap=plt.cm.Reds, xlabel=False, ylabel=False):
-    '''Plots median rho, T, or e_CR profile for every redshift bin in `allprofiles`.
+    '''Plots median rho, T, e_CR, or P_thermal profile for every redshift bin in `allprofiles`.
     
     Parameters:
         `allprofiles`: output of `profiles_zbins`
-        `profiletype`: profile to plot (one of `'rho'`, `'T'`, or `'e_CR'`)
+        `profiletype`: profile to plot (one of `'rho'`, `'T'`, `'P_th'`, or `'e_CR'`)
         `zbinwidth`: width of redshift bins
     '''
-    # For each redshift bin, create 2D array where the rows are rho/T/e_CR profiles for every snapshot in bin
-    all_profileavgbins = {k:np.array([(rhoavgbins if profiletype=='rho' else logTavgbins if profiletype=='T' else CReavgbins) for rmid, logTavgbins, rhoavgbins, CReavgbins in profiles_zbin]) for k,profiles_zbin in allprofiles.items()}
+    # For each redshift bin, create 2D array where the rows are rho/T/e_CR/P_th profiles for every snapshot in bin
+    all_profileavgbins = {k:np.array([(rhoavgbins if profiletype=='rho' else logTavgbins if profiletype=='T' else CReavgbins if profiletype=='e_CR' else logPthavgbins) for rmid, logTavgbins, rhoavgbins, CReavgbins, logPthavgbins in profiles_zbin]) for k,profiles_zbin in allprofiles.items()}
 
     # For each redshift bin, plot median profile
     rmid = (rbins[:-1]+rbins[1:])/2
@@ -242,7 +248,7 @@ def plot_profiles_zbins(allprofiles, ax, profiletype='rho', zbinwidth=0.5, rbins
     if xlabel:
         ax.set_xlabel(r'$\log (r/R_{vir})$')
     if ylabel:
-        ax.set_ylabel( (r'$\log \mathrm{median}\ \left<\rho \right>$' if profiletype=='rho' else r'median $\left<\log \left(T/\mathrm{K}\right)\right>$' if profiletype=='T' else r'$\log \mathrm{median}\ \left<\epsilon_{CR} \right>$') )
+        ax.set_ylabel( (r'$\log \mathrm{median}\ \left<\rho \right>$' if profiletype=='rho' else r'median $\left<\log \left(T/\mathrm{K}\right)\right>$' if profiletype=='T' else r'median $\left<\log \left(P_{th}\right)\right>$' if profiletype=='P_th' else r'$\log \mathrm{median}\ \left<\epsilon_{CR} \right>$') )
 
 ### COSMOLOGY CODE ###
 def scale_factor_to_redshift(a):
