@@ -20,7 +20,10 @@ profilelabels = {
     'T':r'$\left< \log \left( T / \mathrm{K} \right) \right>$',
     'e_CR':r'$\log \left< \epsilon_{CR} / \left( 10^{10} \mathrm{M_\odot} \mathrm{km}^2 / \mathrm{kpc}^3 \mathrm{s}^2 \right) \right>$',
     'P_th':r'$\left< \log \left[ P_{th} / \left(k_B \mathrm{K}/\mathrm{cm}^3\right) \right] \right>$',
-    'P_CR':r'$\left< \log \left[ P_{CR} / \left(k_B \mathrm{K}/\mathrm{cm}^3\right) \right] \right>$'
+    'P_CR':r'$\left< \log \left[ P_{CR} / \left(k_B \mathrm{K}/\mathrm{cm}^3\right) \right] \right>$',
+    'T lin':r'$\log \left< T / \mathrm{K} \right>$',
+    'P_th lin':r'$\log \left< P_{th} / \left(k_B \mathrm{K}/\mathrm{cm}^3\right) \right>$',
+    'P_CR lin':r'$\log \left< P_{CR} / \left(k_B \mathrm{K}/\mathrm{cm}^3\right) \right>$'
 }
 
 import numpy as np
@@ -164,7 +167,7 @@ def profiles( p0, Tmask=True, rbins=np.power(10, np.arange(np.log10(0.0052586397
     If `outfile` is defined, a pickled dict of the profiles is saved to disk.
     '''
     rmid = (rbins[:-1]+rbins[1:])/2 #in units of Rvir
-    logprofiles = {'T':[], 'rho':[], 'P_th':[], 'e_CR':[], 'P_CR':[]}
+    logprofiles = {'T':[], 'rho':[], 'P_th':[], 'e_CR':[], 'P_CR':[], 'T lin':[], 'P_th lin':[], 'P_CR lin':[]}
 
     for r0,r1 in zip(rbins[:-1],rbins[1:]):
         idx = np.flatnonzero(Tmask & inrange( p0['r_scaled'], (r0, r1) ))
@@ -191,6 +194,18 @@ def profiles( p0, Tmask=True, rbins=np.power(10, np.arange(np.log10(0.0052586397
         P_CRi = Pressure(u_CR(p0['CosmicRayEnergy'][idx], p0['Masses'][idx]), p0['Density'][idx], typeP='CR')
         logPCRavg = np.sum(np.log10(P_CRi) * p0['Vi'][idx]) / V
         logprofiles['P_CR'].append(logPCRavg)
+
+        # Temperature profile (averaging in linear space): log <T/K>
+        Tavg = np.sum(p0['Temperature'][idx] * p0['Vi'][idx]) / V
+        logprofiles['T lin'].append(np.log10(Tavg))
+
+        # Thermal pressure profile (averaging in linear space): log <P_th/(k_B K/cm^3)>
+        Pthavg = np.sum(P_thi * p0['Vi'][idx]) / V
+        logprofiles['P_th lin'].append(np.log10(Pthavg))
+        
+        # CR pressure profile (averaging in linear space): log <P_CR/(k_B K/cm^3)>
+        PCRavg = np.sum(P_CRi * p0['Vi'][idx]) / V
+        logprofiles['P_CR lin'].append(np.log10(PCRavg))
     
     if outfile:
         pickle_save_dict(outfile, {'rmid':rmid, **logprofiles, 'posC':p0['posC'], 'Rvir':p0['Rvir']})
