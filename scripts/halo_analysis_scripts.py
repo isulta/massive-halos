@@ -20,6 +20,8 @@ import matplotlib.pyplot as plt
 from numba import njit
 from abg_python.snapshot_utils import openSnapshot
 from abg_python.cosmo_utils import load_AHF
+from astropy.constants import k_B
+from astropy import units
 
 def redshifts_snapshots(simdir, snapshot_scalefactors_file = 'snapshot_scale-factors.txt'):
     '''Loads redshifts of the snapshots of a simulation.
@@ -89,7 +91,9 @@ def halo_center_wrapper(pdata, shrinkpercent=50, minparticles=1000, initialradiu
 
 ### TD profiles ###
 def load_p0(snapdir, snapnum, ahf_path=None, Rvir=None, loud=1, keys_to_extract=None, calculate_qtys=True):
-    '''Loads gas particle snapshot and adds `CoordinatesRelative`, `r`, `r_scaled`, `Vi`, `posC`, and `Rvir` columns to dictionary.'''
+    '''Loads gas particle snapshot and adds `CoordinatesRelative`, `r`, `r_scaled`, `Vi`, `posC`, and `Rvir` columns to dictionary.
+    `Rvir` argument must be in units of physical kpc. If `ahf_path` is passed instead, `Rvir` will be read in with units physical kpc.
+    '''
     p0 = openSnapshot(snapdir, snapnum, 0, loud=loud, keys_to_extract=keys_to_extract)
     p1 = openSnapshot(snapdir, snapnum, 1, loud=loud, keys_to_extract=['Coordinates', 'Masses'])
     
@@ -111,11 +115,11 @@ def load_p0(snapdir, snapnum, ahf_path=None, Rvir=None, loud=1, keys_to_extract=
         # distance from halo center in units of virial radius
         p0['r_scaled'] = p0['r']/Rvir
 
-        # volume of each particle
+        # volume of each particle in units (physical kpc)^3
         p0['Vi'] = p0['Masses']/p0['Density']
 
-        p0['posC'] = posC
-        p0['Rvir'] = Rvir
+        p0['posC'] = posC #halo center in units physical kpc
+        p0['Rvir'] = Rvir #virial radius in units physical kpc
     
     return p0
 
@@ -128,13 +132,30 @@ def load_p0_allsnaps(snapdir, snapnums, Rvir=1,
         p0_allsnaps.append(p0)
     return p0_allsnaps
 
+def u_CR(E_CR, M):
+    '''Returns the specific CR energy in physical units (km/s)^2, 
+    given `'CosmicRayEnergy'` in default units (1e10 Msun (km/s)^2), and mass in units 1e10 Msun.
+    '''
+    return E_CR/M
+
+def Pressure(u, rho, gamma=None, typeP=None):
+    '''Returns pressure in physical units k_B K/cm^3, 
+    given specific energy in physical units (km/s)^2 and density in physical units 1e10 Msun/(kpc)^3.
+    `gamma` can either be explictly given, or the pressure type (thermal, CR) specified.
+    '''
+    gammadict = {'CR':4/3, 'thermal':5/3}
+    if gamma is None:
+        gamma = gammadict[typeP]
+    P = (gamma-1) * u * rho #in physical units 1e10 Msun/(kpc)^3 (km/s)^2
+    return ((P * 1e10 * units.Msun/units.kpc**3 * (units.km/units.s)**2).to(k_B * units.K/units.cm**3)).value
+
 def profiles( p0, Tmask=True, rbins=np.power(10, np.arange(np.log10(0.005258639741921723), np.log10(1.9597976388995666), 0.05)), outfile=None ):
     '''
     Default Tmask and rbins chosen to match Stern+20 Fig. 6.
     Input gas particle snapshot dict `p0` must have `r_scaled`, `Vi`, `posC`, and `Rvir` columns.
     If `outfile` is defined, a pickled dict of the profiles is saved to disk.
     '''
-    rmid = (rbins[:-1]+rbins[1:])/2
+    rmid = (rbins[:-1]+rbins[1:])/2 #in units of Rvir
     logTavgbins = []
     rhoavgbins = []
     CReavgbins = []
