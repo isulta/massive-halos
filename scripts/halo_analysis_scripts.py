@@ -1,15 +1,31 @@
 # good AGN feedback models
 CCAbaseDir = '/home/jovyan/fire2/AGN_suite/'
+CCA_goodsim_h206 = lambda model : CCAbaseDir + f'm13h206_m3e5/m13h206_m3e5_{model}_alpha10_gacc30_accf1_vw10000_cr1e-2_msd1e-8_sdp3e-3_mw4e-7_fa0.5_tw1e4_fmom1'
 CCA_sims = {
     'push':{
-        'h206':CCAbaseDir+'m13h206_m3e5/m13h206_m3e5_push_alpha10_gacc30_accf1_vw10000_cr1e-2_msd1e-8_sdp3e-3_mw4e-7_fa0.5_tw1e4_fmom1',
+        'h206': CCA_goodsim_h206('push'),
         'h29':CCAbaseDir+'m13h29_m3e5/m13h29_m3e5_push_alpha10_gacc30_accf1_vw10000_cr1e-2_msd1e-8_sdp5e-3_mw4e-7_fa0.5_tw1e4_fmom1'
     },
     'jet':{
-        'h206':CCAbaseDir+'m13h206_m3e5/m13h206_m3e5_jet_alpha10_gacc30_accf1_vw10000_cr1e-2_msd1e-8_sdp3e-3_mw4e-7_fa0.5_tw1e4_fmom1'
+        'h206': CCA_goodsim_h206('jet')
     },
     'spawn':{
-        'h206':CCAbaseDir+'m13h206_m3e5/m13h206_m3e5_spawn_alpha10_gacc30_accf1_vw10000_cr1e-2_msd1e-8_sdp3e-3_mw4e-7_fa0.5_tw1e4_fmom1'
+        'h206': CCA_goodsim_h206('spawn')
+    }
+}
+
+FronterabaseDir = '/scratch3/01799/phopkins/bhfb_suite_done/'
+Frontera_h206push_base = FronterabaseDir + 'm13h206_m3e5/m13h206_m3e5_push_'
+Frontera_sims = {
+    'push':{
+        'h206':{
+            'radfboff':             Frontera_h206push_base + 'alpha10_gacc30_accf1_vw10000_cr1e-2_msd1e-8_sdp3e-3_mw4e-7_fa0.5_tw1e4_fmom1e-4',
+            'good':                 Frontera_h206push_base + 'alpha10_gacc30_accf1_vw10000_cr1e-2_msd1e-8_sdp3e-3_mw4e-7_fa0.5_tw1e4_fmom1',
+            'CRsoff_veryhighradfb': Frontera_h206push_base + 'alpha10_gacc30_accf1_vw10000_cr1e-6_msd1e-8_sdp3e-3_mw4e-7_fa0.5_tw1e4_fmom100',
+            'CRsoff':               Frontera_h206push_base + 'alpha10_gacc30_accf1_vw10000_cr1e-6_msd1e-8_sdp3e-3_mw4e-7_fa0.5_tw1e4_fmom1',
+            'veryslowwinds':        Frontera_h206push_base + 'alpha10_gacc30_accf1_vw100_cr1e-2_msd1e-8_sdp3e-3_mw4e-7_fa0.5_tw1e4_fmom1',
+            'CRsoff_veryfastwinds': Frontera_h206push_base + 'alpha10_gacc30_accf1_vw42500_cr1e-6_msd1e-8_sdp3e-3_mw4e-7_fa0.5_tw1e4_fmom1'
+        }
     }
 }
 
