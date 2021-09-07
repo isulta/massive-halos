@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -e
 
 cd /home/jovyan/home
 conda install -y vim htop numpy matplotlib=3.4.2 numba git astropy pyyaml tqdm hdf5
@@ -9,6 +10,9 @@ mkdir tools projects
 cd tools
 git clone https://github.com/isulta/itk
 git clone https://github.com/agurvich/abg_python
+cd abg_python
+pip install -e .
+cd ..
 git clone https://github.com/agurvich/FIRE_studio
 
 cd ../projects
