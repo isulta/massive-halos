@@ -29,6 +29,19 @@ Frontera_sims = {
     }
 }
 
+QuestbaseDir = '/projects/b1026/anglesd/FIRE/'
+Quest_nofb_m13_id = '_HR_sn1dy300ro100ss'
+Quest_nofb_m13 = lambda halo : QuestbaseDir + halo + Quest_nofb_m13_id
+Quest_nofb_m13_ahf = lambda halo : '/projects/b1026/halo_files/anglesd_m13/' + halo + Quest_nofb_m13_id
+Quest_sims = {
+    'nofb':{
+        'h206': Quest_nofb_m13('h206'), #A1
+        'h29':  Quest_nofb_m13('h29'),  #A2
+        'h113': Quest_nofb_m13('h113'), #A4
+        'h2':   Quest_nofb_m13('h2')    #A8
+    }
+}
+
 COLOR_SCHEME = ['#2402ba','#b400e0','#98c1d9','#ff0000','#292800','#ff9b71']
 
 profilelabels = {
@@ -49,6 +62,9 @@ from abg_python.snapshot_utils import openSnapshot
 from abg_python.cosmo_utils import load_AHF
 from astropy.constants import k_B
 from astropy import units
+from itk import inrange, loadpickle, pickle_save_dict, n_array_equal, sync_lim
+from tqdm import tqdm
+import os.path
 
 def redshifts_snapshots(simdir, snapshot_scalefactors_file = 'snapshot_scale-factors.txt'):
     '''Loads redshifts of the snapshots of a simulation.
@@ -57,6 +73,39 @@ def redshifts_snapshots(simdir, snapshot_scalefactors_file = 'snapshot_scale-fac
     scale_factors = np.loadtxt(f'{simdir}/{snapshot_scalefactors_file}')
     redshifts = scale_factor_to_redshift(scale_factors)
     return redshifts
+
+def load_Rvir_allsnaps(snapdir, ahf_path, outputDir=None, simname=None):
+    '''Given the snapshot directory and ahf directory for a simulation, loads the virial radius at each snapshot 
+    that is available in the AHF data files.
+    If `outputDir` is defined, the output is pickled and saved as file `'{simname}_Rvir_redshifts_allsnaps.pkl'`.
+    
+    Returns:
+        Dictionary where `Rvir_allsnaps[snapnum]` is the virial radius (in units of physical kpc) for snapshot `snapnum`.
+        Array `redshifts` where `redshifts[i]` is the redshift of snapshot `i`.
+    '''
+    # Load redshift of each snapshot
+    redshifts = redshifts_snapshots(snapdir)
+    totsnaps = len(redshifts)
+
+    # Load little h for simulation
+    hubble = float([l.strip().split()[1] for l in tuple(open(os.path.join(snapdir, 'params.txt'), 'r')) if 'HubbleParam' in l][0])
+    
+    # Load array of all snapshot numbers available in AHF file
+    ahf_snaps = np.sort(np.genfromtxt(os.path.join(ahf_path, 'halo_00000_smooth.dat'), delimiter='\t', skip_header=True, dtype=int)[:,0])
+    
+    print(f'h={hubble}; {totsnaps} snapshots found in scalefactors file.')
+    print(f'Snapshots in AHF file range from {ahf_snaps.min()} to {ahf_snaps.max()} (z={redshifts[ahf_snaps.min()]} to {redshifts[ahf_snaps.max()]}).')
+    
+    # load Rvir of each snapshot
+    Rvir_allsnaps = {}
+    for snapnum in ahf_snaps:
+        Rvir_allsnaps[snapnum] = load_AHF('', snapnum, redshifts[snapnum], hubble=hubble, ahf_path=ahf_path, extra_names_to_read=[])[1]
+    
+    # save Rvir and redshift data
+    if outputDir is not None: 
+        pickle_save_dict(os.path.join(outputDir, f'{simname}_Rvir_redshifts_allsnaps.pkl'), {'Rvir_allsnaps':Rvir_allsnaps, 'redshifts':redshifts})
+
+    return Rvir_allsnaps, redshifts
 
 ### Halo centering ###
 def center_of_mass(coords, masses):
@@ -202,14 +251,15 @@ def profiles( p0, Tmask=True, rbins=np.power(10, np.arange(np.log10(0.0052586397
         logPthavg = np.sum(np.log10(P_thi) * p0['Vi'][idx]) / V
         logprofiles['P_th'].append(logPthavg)
         
-        # CR energy density profile: log <e_CR/(1e10 Msun/kpc^3 (km/s)^2)>
-        CReavg = np.sum(p0['CosmicRayEnergy'][idx]) / V
-        logprofiles['e_CR'].append(np.log10(CReavg))
+        if 'CosmicRayEnergy' in p0:
+            # CR energy density profile: log <e_CR/(1e10 Msun/kpc^3 (km/s)^2)>
+            CReavg = np.sum(p0['CosmicRayEnergy'][idx]) / V
+            logprofiles['e_CR'].append(np.log10(CReavg))
 
-        # CR pressure profile: <log P_CR/(k_B K/cm^3)>
-        P_CRi = Pressure(u_CR(p0['CosmicRayEnergy'][idx], p0['Masses'][idx]), p0['Density'][idx], typeP='CR')
-        logPCRavg = np.sum(np.log10(P_CRi) * p0['Vi'][idx]) / V
-        logprofiles['P_CR'].append(logPCRavg)
+            # CR pressure profile: <log P_CR/(k_B K/cm^3)>
+            P_CRi = Pressure(u_CR(p0['CosmicRayEnergy'][idx], p0['Masses'][idx]), p0['Density'][idx], typeP='CR')
+            logPCRavg = np.sum(np.log10(P_CRi) * p0['Vi'][idx]) / V
+            logprofiles['P_CR'].append(logPCRavg)
 
         # Temperature profile (averaging in linear space): log <T/K>
         Tavg = np.sum(p0['Temperature'][idx] * p0['Vi'][idx]) / V
@@ -219,9 +269,10 @@ def profiles( p0, Tmask=True, rbins=np.power(10, np.arange(np.log10(0.0052586397
         Pthavg = np.sum(P_thi * p0['Vi'][idx]) / V
         logprofiles['P_th lin'].append(np.log10(Pthavg))
         
-        # CR pressure profile (averaging in linear space): log <P_CR/(k_B K/cm^3)>
-        PCRavg = np.sum(P_CRi * p0['Vi'][idx]) / V
-        logprofiles['P_CR lin'].append(np.log10(PCRavg))
+        if 'CosmicRayEnergy' in p0:
+            # CR pressure profile (averaging in linear space): log <P_CR/(k_B K/cm^3)>
+            PCRavg = np.sum(P_CRi * p0['Vi'][idx]) / V
+            logprofiles['P_CR lin'].append(np.log10(PCRavg))
     
     if outfile:
         pickle_save_dict(outfile, {'rmid':rmid, **logprofiles, 'posC':p0['posC'], 'Rvir':p0['Rvir']})
