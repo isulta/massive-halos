@@ -2,3 +2,4 @@
 *.pyc
 vizdata/
 slurm.*
+.vscode/

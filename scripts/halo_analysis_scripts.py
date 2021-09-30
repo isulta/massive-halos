@@ -63,6 +63,7 @@ from abg_python.cosmo_utils import load_AHF
 from astropy.constants import k_B
 from astropy import units
 from itk import inrange, loadpickle, pickle_save_dict, n_array_equal, sync_lim
+from silx.io.dictdump import dicttoh5, h5todict
 from tqdm import tqdm
 import os.path
 
@@ -274,10 +275,11 @@ def profiles( p0, Tmask=True, rbins=np.power(10, np.arange(np.log10(0.0052586397
             PCRavg = np.sum(P_CRi * p0['Vi'][idx]) / V
             logprofiles['P_CR lin'].append(np.log10(PCRavg))
     
+    resdict = {'rmid':rmid, **logprofiles, 'posC':p0['posC'], 'Rvir':p0['Rvir']}
     if outfile:
-        pickle_save_dict(outfile, {'rmid':rmid, **logprofiles, 'posC':p0['posC'], 'Rvir':p0['Rvir']})
+        pickle_save_dict(outfile, resdict)
     
-    return rmid, logprofiles
+    return resdict
 
 def profiles_zbins(snapdir, redshifts, Rvir_allsnaps, zmin=1, zmax=4, zbinwidth=0.5, outfile=None):
     '''Compute profiles for all snapshots in each redshift bin. In each redshift bin, the virial radius at the median (center) snapshot is used.
@@ -293,7 +295,7 @@ def profiles_zbins(snapdir, redshifts, Rvir_allsnaps, zmin=1, zmax=4, zbinwidth=
     '''
     allprofiles = {}
     for z0 in np.arange(zmin,zmax,zbinwidth):
-        allprofiles[z0] = []
+        allprofiles[str(z0)] = {}
         z1 = z0 + zbinwidth
         
         print(f'Beginning bin from z={z0} to {z1}.')
@@ -305,10 +307,10 @@ def profiles_zbins(snapdir, redshifts, Rvir_allsnaps, zmin=1, zmax=4, zbinwidth=
         print(f'Computing profiles for snapshots {snapnums_bin.min()} to {snapnums_bin.max()}.')
         for snapnum in tqdm(snapnums_bin):
             p0 = load_p0(snapdir, snapnum, Rvir=Rvir, loud=0)
-            allprofiles[z0].append( profiles(p0) )
+            allprofiles[str(z0)][str(snapnum)] = profiles(p0)
     
     if outfile:
-        pickle_save_dict(outfile, {'allprofiles':allprofiles})
+        dicttoh5(allprofiles, outfile, mode='w')
     return allprofiles
 
 def plot_rho_profiles_zbins(allprofiles, zbinwidth=0.5, simname='', outfile='', rbins=np.power(10, np.arange(np.log10(0.005258639741921723), np.log10(1.9597976388995666), 0.05))):
@@ -350,7 +352,7 @@ def plot_profiles_zbins(allprofiles, ax, profiletype='rho', zbinwidth=0.5, rbins
         `zbinwidth`: width of redshift bins
     '''
     # For each redshift bin, create 2D array where the rows are rho/T/e_CR/P_th/P_CR profiles for every snapshot in bin
-    all_profileavgbins = {k:np.array([logprofiles[profiletype] for rmid, logprofiles in profiles_zbin]) for k,profiles_zbin in allprofiles.items()}
+    all_profileavgbins = {float(k):np.array([logprofiles[profiletype] for logprofiles in profiles_zbin.values()]) for k,profiles_zbin in allprofiles.items()}
 
     # For each redshift bin, plot median profile
     rmid = (rbins[:-1]+rbins[1:])/2
