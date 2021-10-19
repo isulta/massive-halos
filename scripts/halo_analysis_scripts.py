@@ -200,6 +200,55 @@ def load_p0(snapdir, snapnum, ahf_path=None, Rvir=None, loud=1, keys_to_extract=
     
     return p0
 
+def load_allparticles(snapdir, snapnum, particle_types=[0,1,2,4,5], keys_to_extract={}, ptype_centering=1, Rvir=None, ahf_path=None, loud=1):
+    '''Loads all particle data from simulation directory `snapdir` for a snapshot  `snapnum`, and returns dict of dicts for each particle type.
+
+    Notes:
+        - `posC` (array of len 3; halo center in units physical kpc) is added to each particle dicts. 
+        - If either `Rvir` or `ahf_path` is defined, `r_scaled` (array; particle distances from halo center in units of Rvir) and `Rvir` (scalar; virial radius in units physical kpc) columns are added to each particle dict.
+        - If a particle dict contains `'Masses'` and `'Density'` keys, `Vi` (array; particle volumes in units (physical kpc)^3) column is added to that particle dict.
+
+    Optional parameters:
+        `particle_types`: list of particle types to load
+        `keys_to_extract`: dict that maps each particle type to a list of keys to read. If dict does not contain a particle type, ALL keys are read in for that particle type.
+        `ptype_centering`: particle type used to find halo center (shrinking sphere method)
+        `Rvir`: virial radius in units of physical kpc
+        `ahf_path`: directory with AHF file. If defined, `Rvir` will be read in with units physical kpc (this will overwrite any value passed for `Rvir`).
+        `loud`: verbose output if `True`
+    '''
+    keys_to_extract = {**{ptype:None for ptype in particle_types}, **keys_to_extract} #load all keys for particle types for which keys were not given
+    
+    part = { ptype : openSnapshot(snapdir, snapnum, ptype, loud=loud, keys_to_extract=keys_to_extract[ptype]) for ptype in particle_types }
+    
+    if loud:
+        print(f"Loading redshift {part[particle_types[0]]['Redshift']}")
+
+    posC = halo_center_wrapper(part[ptype_centering])[0]
+
+    if ahf_path:
+        _, Rvir = load_AHF('', snapnum, part[particle_types[0]]['Redshift'], hubble=part[particle_types[0]]['HubbleParam'], ahf_path=ahf_path, extra_names_to_read=[])
+
+    for ptype, p_i in part.items():
+        p_i['posC'] = posC #halo center in units physical kpc
+        
+        if Rvir is not None:
+            p_i['Rvir'] = Rvir #virial radius in units physical kpc
+
+            # position relative to center
+            p_i_CoordinatesRelative = p_i['Coordinates'] - posC
+
+            # distance from halo center
+            p_i_r = np.linalg.norm(p_i_CoordinatesRelative, axis=1)
+
+            # distance from halo center in units of virial radius
+            p_i['r_scaled'] = p_i_r/Rvir
+
+        if ('Masses' in p_i) and ('Density' in p_i):
+            # volume of each particle in units (physical kpc)^3
+            p_i['Vi'] = p_i['Masses']/p_i['Density']
+    
+    return part
+
 def load_p0_allsnaps(snapdir, snapnums, Rvir=1, 
                      keys_to_extract=['Coordinates','Masses','Metallicity','SmoothingLength','Temperature'], 
                      calculate_qtys=False):
