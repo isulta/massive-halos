@@ -67,6 +67,23 @@ from silx.io.dictdump import dicttoh5, h5todict
 from tqdm import tqdm
 import os.path
 
+def read_param_file(simdir, params_file='params.txt'):
+    '''Reads GIZMO parameter file and returns dictionary of parameters.
+    '''
+    f = os.path.join(simdir, params_file)
+    params = [l.strip().split('%')[0].split() for l in open(f, 'r') if not (l.startswith(('%','\n')) or l.strip()=='')]
+    
+    p = {}
+    for k,v in params:
+        if v.isdigit():
+            p[k] = int(v)
+        else:
+            try:
+                p[k] = float(v)
+            except:
+                p[k] = v
+    return p
+
 def redshifts_snapshots(simdir, snapshot_scalefactors_file = 'snapshot_scale-factors.txt'):
     '''Loads redshifts of the snapshots of a simulation.
     Returns array `redshifts` where `redshifts[i]` is the redshift of snapshot `i`.
@@ -89,7 +106,7 @@ def load_Rvir_allsnaps(snapdir, ahf_path, outputDir=None, simname=None):
     totsnaps = len(redshifts)
 
     # Load little h for simulation
-    hubble = float([l.strip().split()[1] for l in tuple(open(os.path.join(snapdir, 'params.txt'), 'r')) if 'HubbleParam' in l][0])
+    hubble = read_param_file(snapdir)['HubbleParam']
     
     # Load array of all snapshot numbers available in AHF file
     ahf_snaps = np.sort(np.genfromtxt(os.path.join(ahf_path, 'halo_00000_smooth.dat'), delimiter='\t', skip_header=True, dtype=int)[:,0])
@@ -200,7 +217,7 @@ def load_p0(snapdir, snapnum, ahf_path=None, Rvir=None, loud=1, keys_to_extract=
     
     return p0
 
-def load_allparticles(snapdir, snapnum, particle_types=[0,1,2,4,5], keys_to_extract={}, ptype_centering=1, Rvir=None, ahf_path=None, loud=1):
+def load_allparticles(snapdir, snapnum, particle_types=[0,1,2,4,5], keys_to_extract={0:['Coordinates', 'Masses', 'Density', 'Temperature', 'InternalEnergy'],1:['Coordinates', 'Masses'],2:['Coordinates', 'Masses'],4:['Coordinates', 'Masses'],5:['Coordinates', 'Masses']}, ptype_centering=1, Rvir=None, ahf_path=None, loud=1):
     '''Loads all particle data from simulation directory `snapdir` for a snapshot  `snapnum`, and returns dict of dicts for each particle type.
 
     Notes:
@@ -275,14 +292,19 @@ def Pressure(u, rho, gamma=None, typeP=None):
     P = (gamma-1) * u * rho #in physical units 1e10 Msun/(kpc)^3 (km/s)^2
     return ((P * 1e10 * units.Msun/units.kpc**3 * (units.km/units.s)**2).to(k_B * units.K/units.cm**3)).value
 
-def profiles( p0, Tmask=True, rbins=np.power(10, np.arange(np.log10(0.005258639741921723), np.log10(1.9597976388995666), 0.05)), outfile=None ):
+def profiles( part, Tmask=True, rbins=np.power(10, np.arange(np.log10(0.005258639741921723), np.log10(3), 0.05)), outfile=None ):
     '''
-    Default Tmask and rbins chosen to match Stern+20 Fig. 6.
-    Input gas particle snapshot dict `p0` must have `r_scaled`, `Vi`, `posC`, and `Rvir` columns.
+    Default Tmask and rbins chosen to match Stern+20 Fig. 6: `np.power(10, np.arange(np.log10(0.005258639741921723), np.log10(1.9597976388995666), 0.05))`
+   
+    `part` is output of `load_allparticles`; `part[ptype]` is snapshot dict for particle `pytpe` and must have `Masses` and `r_scaled` columns.
+    Input gas particle snapshot dict `part[0]` must have `r_scaled`, `Vi`, `posC`, and `Rvir` columns.
+    
     If `outfile` is defined, a pickled dict of the profiles is saved to disk.
     '''
+    p0 = part[0]
     rmid = (rbins[:-1]+rbins[1:])/2 #in units of Rvir
     logprofiles = {'T':[], 'rho':[], 'P_th':[], 'e_CR':[], 'P_CR':[], 'T lin':[], 'P_th lin':[], 'P_CR lin':[]}
+    Mbins = { f'PartType{ptype}':[] for ptype in part.keys() }
 
     for r0,r1 in zip(rbins[:-1],rbins[1:]):
         idx = np.flatnonzero(Tmask & inrange( p0['r_scaled'], (r0, r1) ))
@@ -323,8 +345,14 @@ def profiles( p0, Tmask=True, rbins=np.power(10, np.arange(np.log10(0.0052586397
             # CR pressure profile (averaging in linear space): log <P_CR/(k_B K/cm^3)>
             PCRavg = np.sum(P_CRi * p0['Vi'][idx]) / V
             logprofiles['P_CR lin'].append(np.log10(PCRavg))
+        
+        # Total mass in radial bin for each particle type: 1e10 Msun
+        for ptype, p_i in part.items():
+            idx_i = np.flatnonzero(inrange( p_i['r_scaled'], (r0, r1) ))
+            Mbin_i = np.sum(p_i['Masses'][idx_i])
+            Mbins[f'PartType{ptype}'].append(Mbin_i)
     
-    resdict = {'rmid':rmid, **logprofiles, 'posC':p0['posC'], 'Rvir':p0['Rvir']}
+    resdict = {'rmid':rmid, **logprofiles, **Mbins, 'posC':p0['posC'], 'Rvir':p0['Rvir']}
     if outfile:
         pickle_save_dict(outfile, resdict)
     
@@ -339,12 +367,12 @@ def profiles_zbins(snapdir, redshifts, Rvir_allsnaps, zmin=1, zmax=4, zbinwidth=
         `Rvir_allsnaps`: dictionary where `Rvir_allsnaps[i]` is the virial radius (in kpc) at snapshot `i`
         `zmin`, `zmax`, `zbinwidth`: redshift bins will be created with edges `z=[z0,z0+zbinwidth)`, where `z0` is in `np.arange(zmin,zmax,zbinwidth)`
     Returns:
-        Dictionary where each key is a redshift bin, and each item is a list of `(rmid, logTavgbins, rhoavgbins)` calculated for each snapshot in that redshift bin.
-        Output will be pickled and saved to disk if `outfile` is passed (output file path/name).
+        Dictionary where each key is a redshift bin, and each item is a dict with key snapshot and item output of `profiles` at that snapshot.
+        Output will be saved to disk as a nested dict in HDF5 format if `outfile` is passed (output file path/name).
     '''
     allprofiles = {}
     for z0 in np.arange(zmin,zmax,zbinwidth):
-        allprofiles[str(z0)] = {}
+        allprofiles[f'z0_{z0}'] = {}
         z1 = z0 + zbinwidth
         
         print(f'Beginning bin from z={z0} to {z1}.')
@@ -355,8 +383,8 @@ def profiles_zbins(snapdir, redshifts, Rvir_allsnaps, zmin=1, zmax=4, zbinwidth=
         
         print(f'Computing profiles for snapshots {snapnums_bin.min()} to {snapnums_bin.max()}.')
         for snapnum in tqdm(snapnums_bin):
-            p0 = load_p0(snapdir, snapnum, Rvir=Rvir, loud=0)
-            allprofiles[str(z0)][str(snapnum)] = profiles(p0)
+            part = load_allparticles(snapdir, snapnum, Rvir=Rvir, loud=0)
+            allprofiles[f'z0_{z0}']['SnapNum' + str(snapnum).zfill(3)] = profiles(part)
     
     if outfile:
         dicttoh5(allprofiles, outfile, mode='w')

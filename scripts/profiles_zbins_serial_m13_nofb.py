@@ -23,7 +23,7 @@ if __name__ == '__main__':
         
         # Compute profiles for all snapshots in each redshift bin
         printr(f'Computing profiles for all snapshots in each redshift bin...'); start_profile = time.time()
-        profiles_zbins(snapdir, redshifts, Rvir_allsnaps, outfile=f'data/{simname}_allprofiles_widezbins.pkl')
+        profiles_zbins(snapdir, redshifts, Rvir_allsnaps, outfile=f'data/{simname}_allprofiles_widezbins.h5')
         printr(f'Finished Computing profiles for all snapshots in each redshift bin in {timedelta(seconds=time.time()-start_profile)}')
 
         printr(f'Finished {simname} in {timedelta(seconds=time.time()-start_sim)}')

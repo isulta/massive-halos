@@ -2,8 +2,8 @@
 #SBATCH -A b1026
 #SBATCH -p cosmoscompute
 #SBATCH -N 1 # number of nodes
-#SBATCH -t 10:00:00 # <hh:mm:ss>
-#SBATCH --mem=350G # Reserving a total amount of memory for each job within the array
+#SBATCH -t 20:00:00 # <hh:mm:ss>
+#SBATCH --mem=950G # Reserving a total amount of memory for each job within the array
 #SBATCH -o slurm.%N.%j.out # STDOUT
 #SBATCH -e slurm.%N.%j.err # STDERR
 
