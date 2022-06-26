@@ -217,6 +217,41 @@ def load_p0(snapdir, snapnum, ahf_path=None, Rvir=None, loud=1, keys_to_extract=
     
     return p0
 
+def find_Rvir(part, posC=None):
+    if posC is None:
+        posC = part[0]['posC']
+
+    Masses = []
+    r = []
+    for ptype, p_i in part.items():
+        Masses.append(p_i['Masses'])
+        
+        # position relative to center
+        p_i_CoordinatesRelative = p_i['Coordinates'] - posC
+
+        # distance from halo center
+        p_i_r = np.linalg.norm(p_i_CoordinatesRelative, axis=1)
+
+        r.append(p_i_r)
+    
+    Masses = np.concatenate(Masses)
+    r = np.concatenate(r)
+
+    idx = np.argsort(r)
+    Masses = Masses[idx]
+    r = r[idx]
+    Volume = 4/3 * np.pi * r**3 # Volume in units (physical kpc)^3
+
+    Masses = np.cumsum(Masses) * 1.e10 # Total mass in units Msun within sphere of radius r
+
+    with np.errstate(divide='ignore'): Density = Masses/Volume * 1.e9 # Density in units Msun/Mpc^3
+
+    OmegaM0, OmegaL0, hubble, z = part[0]['Omega0'], part[0]['OmegaLambda'], part[0]['HubbleParam'], part[0]['Redshift']
+    rhovir = deltavir(OmegaM0, OmegaL0, z) * rhocritz(OmegaM0, OmegaL0, z) * hubble**2 # Virial density in units Msun/Mpc^3
+
+    return r[np.flatnonzero(Density <= rhovir)[0]] # return Rvir in units physical kpc
+    # simple linear interpolation with next closest point, and InterpolatedUnivariateSpline.roots() both seem to return approximately same Rvir as the 1 point method above.
+
 def load_allparticles(snapdir, snapnum, particle_types=[0,1,2,4,5], keys_to_extract={0:['Coordinates', 'Masses', 'Density', 'Temperature', 'InternalEnergy'],1:['Coordinates', 'Masses'],2:['Coordinates', 'Masses'],4:['Coordinates', 'Masses'],5:['Coordinates', 'Masses']}, ptype_centering=1, Rvir=None, ahf_path=None, loud=1):
     '''Loads all particle data from simulation directory `snapdir` for a snapshot  `snapnum`, and returns dict of dicts for each particle type.
 
