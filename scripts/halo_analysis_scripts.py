@@ -59,7 +59,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from numba import njit
 from abg_python.snapshot_utils import openSnapshot
-from abg_python.cosmo_utils import load_AHF
+from abg_python.cosmo_utils import load_AHF, load_rockstar
 from astropy.constants import k_B
 from astropy import units
 from itk import inrange, loadpickle, pickle_save_dict, n_array_equal, sync_lim
@@ -92,37 +92,86 @@ def redshifts_snapshots(simdir, snapshot_scalefactors_file = 'snapshot_scale-fac
     redshifts = scale_factor_to_redshift(scale_factors)
     return redshifts
 
-def load_Rvir_allsnaps(snapdir, ahf_path, outputDir=None, simname=None):
+def load_Rvir_allsnaps(snapdir, ahf_path=None, outputFlag=True, simname=None):
     '''Given the snapshot directory and ahf directory for a simulation, loads the virial radius at each snapshot 
     that is available in the AHF data files.
-    If `outputDir` is defined, the output is pickled and saved as file `'{simname}_Rvir_redshifts_allsnaps.pkl'`.
+    If `ahf_path` is not given, loads Rockstar halo files from `{snapdir}/halo/rockstar_dm/catalog_hdf5`.
+    If `outputFlag` is True, the output is saved as file `'Rvir_{simname}.h5'`.
     
     Returns:
         Dictionary where `Rvir_allsnaps[snapnum]` is the virial radius (in units of physical kpc) for snapshot `snapnum`.
         Array `redshifts` where `redshifts[i]` is the redshift of snapshot `i`.
     '''
+    res = {'snapnum':[], 'z':[], 'Rvir':[]}
+
     # Load redshift of each snapshot
     redshifts = redshifts_snapshots(snapdir)
     totsnaps = len(redshifts)
 
     # Load little h for simulation
     hubble = read_param_file(snapdir)['HubbleParam']
-    
-    # Load array of all snapshot numbers available in AHF file
-    ahf_snaps = np.sort(np.genfromtxt(os.path.join(ahf_path, 'halo_00000_smooth.dat'), delimiter='\t', skip_header=True, dtype=int)[:,0])
-    
     print(f'h={hubble}; {totsnaps} snapshots found in scalefactors file.')
-    print(f'Snapshots in AHF file range from {ahf_snaps.min()} to {ahf_snaps.max()} (z={redshifts[ahf_snaps.min()]} to {redshifts[ahf_snaps.max()]}).')
     
-    # load Rvir of each snapshot
-    Rvir_allsnaps = {}
-    for snapnum in ahf_snaps:
-        Rvir_allsnaps[snapnum] = load_AHF('', snapnum, hubble=hubble, ahf_path=ahf_path, extra_names_to_read=[])[1]
+    if ahf_path is not None:
+        # Load array of all snapshot numbers available in AHF file
+        ahf_snaps = np.sort(np.genfromtxt(os.path.join(ahf_path, 'halo_00000_smooth.dat'), delimiter='\t', skip_header=True, dtype=int)[:,0])
+        
+        print(f'Snapshots in AHF file range from {ahf_snaps.min()} to {ahf_snaps.max()} (z={redshifts[ahf_snaps.min()]} to {redshifts[ahf_snaps.max()]}).')
+        
+        # load Rvir of each snapshot
+        for snapnum in ahf_snaps:
+            res['Rvir'].append( load_AHF('', snapnum, hubble=hubble, ahf_path=ahf_path, extra_names_to_read=[])[1] )
+            res['snapnum'].append(snapnum)
+            res['z'].append(redshifts[snapnum])
+    else: #use Rockstar halo files
+        # Find array of all snapshot numbers available in Rockstar files
+        rockstar_snaps = np.sort([int(f.split('_')[1].split('.')[0]) for f in os.listdir(os.path.join(snapdir, 'halo/rockstar_dm/catalog_hdf5')) if 'halo' in f])
+        
+        print(f'Snapshots in Rockstar files range from {rockstar_snaps.min()} to {rockstar_snaps.max()} (z={redshifts[rockstar_snaps.min()]} to {redshifts[rockstar_snaps.max()]}).')
+        
+        # load Rvir of each snapshot
+        for snapnum in rockstar_snaps:
+            res['Rvir'].append( load_rockstar(os.path.join(snapdir, 'output/'), snapnum)[1] )
+            res['snapnum'].append(snapnum)
+            res['z'].append(redshifts[snapnum])
     
     # save Rvir and redshift data
-    if outputDir is not None: 
-        pickle_save_dict(os.path.join(outputDir, f'{simname}_Rvir_redshifts_allsnaps.pkl'), {'Rvir_allsnaps':Rvir_allsnaps, 'redshifts':redshifts})
+    if outputFlag: 
+        simname = os.path.basename(snapdir.rstrip('/')) if simname is None else simname
+        fname = f'data/Rvir_{simname}.h5'
+        dicttoh5(res, fname, mode='w')
+        print(f'Saved res to {fname}.')
 
+    Rvir_allsnaps = dict(zip(res['snapnum'], res['Rvir']))
+    return Rvir_allsnaps, redshifts
+
+'''For a given simulation, loads virial radius data from either `Rvir_{simname}.h5` or `Rvir_{halo}_noAGNfb.h5` files.
+If the former file does not exist or `useNoAGNFb` is True, the latter file is used to perform a redshift matching 
+between the given sim (for which Rvir(z) is not known) and No AGN feedback sim. 
+'''
+def Rvir_sim(snapdir, simname=None, useNoAGNFb=True):
+    # Load redshift of each snapshot
+    redshifts = redshifts_snapshots(snapdir)
+
+    simname = os.path.basename(snapdir.rstrip('/')) if simname is None else simname
+    fname = f'data/Rvir_{simname}.h5'
+    if os.path.exists(fname) and (not useNoAGNFb or '_noAGNfb' in snapdir):
+        res = h5todict(fname)
+        print(f'Found {fname} and loaded res.')
+        Rvir_allsnaps = dict(zip(res['snapnum'], res['Rvir']))
+    else:
+        print(f'Loading No AGN feedback file instead of {fname}...')
+        fname = f'data/Rvir_{simname.split("_")[0]}_noAGNfb.h5'
+        res = h5todict(fname)
+        print(f'Found {fname} and loaded res.')
+
+        # Set Rvir_allsnaps
+        _, idx1, idx2 = np.intersect1d(redshifts, res['z'], return_indices=True)
+        Rvir_allsnaps = { i1:res['Rvir'][i2] for i1, i2 in zip(idx1[::-1], idx2[::-1]) }
+        
+        # Check if all snapshots for which an Rvir match was found are contiguous
+        assert np.array_equal( sorted(Rvir_allsnaps.keys()), np.arange(idx1.min(), idx1.max()+1) ), 'Redshift match not found for at least one intermediate snapshot.'
+    
     return Rvir_allsnaps, redshifts
 
 ### Halo centering ###
@@ -409,7 +458,7 @@ def profiles( part, Tmask=True, rbins=np.power(10, np.arange(np.log10(0.00525863
     
     return resdict
 
-def profiles_zbins(snapdir, redshifts, Rvir_allsnaps, zmin=1, zmax=4, zbinwidth=0.5, outfile=None):
+def profiles_zbins(snapdir, redshifts=None, Rvir_allsnaps=None, zmin=1, zmax=4, zbinwidth=0.5, outfile=None):
     '''Compute profiles for all snapshots in each redshift bin. In each redshift bin, the virial radius at the median (center) snapshot is used.
 
     Parameters:
@@ -421,6 +470,10 @@ def profiles_zbins(snapdir, redshifts, Rvir_allsnaps, zmin=1, zmax=4, zbinwidth=
         Dictionary where each key is a redshift bin, and each item is a dict with key snapshot and item output of `profiles` at that snapshot.
         Output will be saved to disk as a nested dict in HDF5 format if `outfile` is passed (output file path/name).
     '''
+    # Load Rvir from `Rvir_{halo}_noAGNfb.h5` file if not passed
+    if Rvir_allsnaps is None:
+        Rvir_allsnaps, redshifts = Rvir_sim(snapdir)
+    
     allprofiles = {}
     for z0 in np.arange(zmin,zmax,zbinwidth):
         allprofiles[f'z0_{z0}'] = {}
