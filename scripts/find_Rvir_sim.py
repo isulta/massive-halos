@@ -1,3 +1,5 @@
+'''Script to run find_Rvir for a given simulation and save output.
+'''
 from scripts.halo_analysis_scripts import *
 from itk import h5_write_dict, h5_read_dict
 import matplotlib.pyplot as plt
@@ -11,7 +13,7 @@ def find_Rvir_halo(snapdir, halo, snapstart, snapend):
     try:
         for snapnum in range(snapstart, snapend+1):
             part = load_allparticles(snapdir, snapnum, loud=False)
-            Rvir = find_Rvir(part)
+            Rvir = find_Rvir(part, halo=halo, snapnum=snapnum)
             
             z = part[0]['Redshift']
 
@@ -42,6 +44,7 @@ if __name__ == '__main__':
     snapstart, snapend = np.flatnonzero(redshifts <= zmax).min(), np.flatnonzero(redshifts <= zmax).max()
 
     snapdir = os.path.join(simdir, 'output/')
+    snapdir = snapdir if os.path.exists(snapdir) else simdir
     halo = os.path.basename(simdir)
     find_Rvir_halo(snapdir, halo, snapstart, snapend)
     

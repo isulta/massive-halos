@@ -217,7 +217,10 @@ def load_p0(snapdir, snapnum, ahf_path=None, Rvir=None, loud=1, keys_to_extract=
     
     return p0
 
-def find_Rvir(part, posC=None):
+'''Finds virial radius (units physical kpc) given particle dict and halo center.
+If `halo` and `snapnum` are defined, a plot of density vs. distance from halo center is saved.
+'''
+def find_Rvir(part, posC=None, halo=None, snapnum=None):
     if posC is None:
         posC = part[0]['posC']
 
@@ -249,6 +252,17 @@ def find_Rvir(part, posC=None):
     OmegaM0, OmegaL0, hubble, z = part[0]['Omega0'], part[0]['OmegaLambda'], part[0]['HubbleParam'], part[0]['Redshift']
     rhovir = deltavir(OmegaM0, OmegaL0, z) * rhocritz(OmegaM0, OmegaL0, z) * hubble**2 # Virial density in units Msun/Mpc^3
 
+    if halo is not None:
+        plt.plot(r, Density)
+        plt.yscale('log')
+        plt.axhline(rhovir, label=r'$\Delta_{vir} \rho_{crit}$')
+        plt.xlim(0,300)
+        plt.xlabel('r (pkpc)')
+        plt.ylabel('Density (Msun/pMpc^3)')
+        plt.legend()
+        plt.savefig(f'Figures/density_{halo}_snapnum_{snapnum}.png')
+        plt.close()
+    
     return r[np.flatnonzero(Density <= rhovir)[0]] # return Rvir in units physical kpc
     # simple linear interpolation with next closest point, and InterpolatedUnivariateSpline.roots() both seem to return approximately same Rvir as the 1 point method above.
 
@@ -505,12 +519,3 @@ def rhocritz(OmegaM0, OmegaL0, z):
 def Rvir(Mvir, OmegaM0, OmegaL0, z):
     '''Returns in units of Mpc/h assuming [Mvir]=Msun/h.'''
     return ( 3/4 * Mvir / (deltavir(OmegaM0, OmegaL0, z) * rhocritz(OmegaM0, OmegaL0, z) * np.pi) )**(1/3)
-
-'''
-def Rvir(coords, masses, com):
-    # TODO
-    r = dist(coords, com)
-    # asort = np.argsort(r)
-    return np.sum(masses[r <= (358.68*0.697)]) #/ (4/3 * np.pi * 358.68**3) * 1e19
-'''
-
