@@ -88,7 +88,7 @@ def redshifts_snapshots(simdir, snapshot_scalefactors_file = 'snapshot_scale-fac
     '''Loads redshifts of the snapshots of a simulation.
     Returns array `redshifts` where `redshifts[i]` is the redshift of snapshot `i`.
     '''
-    scale_factors = np.loadtxt(f'{simdir}/{snapshot_scalefactors_file}')
+    scale_factors = np.loadtxt(os.path.join(simdir, snapshot_scalefactors_file))
     redshifts = scale_factor_to_redshift(scale_factors)
     return redshifts
 
@@ -117,7 +117,7 @@ def load_Rvir_allsnaps(snapdir, ahf_path, outputDir=None, simname=None):
     # load Rvir of each snapshot
     Rvir_allsnaps = {}
     for snapnum in ahf_snaps:
-        Rvir_allsnaps[snapnum] = load_AHF('', snapnum, redshifts[snapnum], hubble=hubble, ahf_path=ahf_path, extra_names_to_read=[])[1]
+        Rvir_allsnaps[snapnum] = load_AHF('', snapnum, hubble=hubble, ahf_path=ahf_path, extra_names_to_read=[])[1]
     
     # save Rvir and redshift data
     if outputDir is not None: 
@@ -260,7 +260,7 @@ def find_Rvir(part, posC=None, halo=None, snapnum=None):
         plt.xlabel('r (pkpc)')
         plt.ylabel('Density (Msun/pMpc^3)')
         plt.legend()
-        plt.savefig(f'Figures/density_{halo}_snapnum_{snapnum}.png')
+        plt.savefig(f'Figures/density/density_{halo}_snapnum_{snapnum}.png')
         plt.close()
     
     return r[np.flatnonzero(Density <= rhovir)[0]] # return Rvir in units physical kpc
@@ -282,6 +282,8 @@ def load_allparticles(snapdir, snapnum, particle_types=[0,1,2,4,5], keys_to_extr
         `ahf_path`: directory with AHF file. If defined, `Rvir` will be read in with units physical kpc (this will overwrite any value passed for `Rvir`).
         `loud`: verbose output if `True`
     '''
+    snapdir = os.path.join(snapdir, 'output/') if os.path.exists(os.path.join(snapdir, 'output/')) else snapdir #some sims have snapshots in output/
+
     keys_to_extract = {**{ptype:None for ptype in particle_types}, **keys_to_extract} #load all keys for particle types for which keys were not given
     
     part = { ptype : openSnapshot(snapdir, snapnum, ptype, loud=loud, keys_to_extract=keys_to_extract[ptype]) for ptype in particle_types }

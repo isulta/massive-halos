@@ -34,18 +34,16 @@ def plot_Rvir(halo):
     plt.xlabel('z')
     plt.ylabel('Rvir (physical kpc)')
     plt.title(f'findRvir_{halo}')
-    plt.savefig(f'Figures/findRvir_{halo}.png')
+    plt.savefig(f'Figures/findRvir/findRvir_{halo}.png')
     plt.close()
 
 if __name__ == '__main__':
-    simdir = sys.argv[1]
-    redshifts = redshifts_snapshots(simdir)
+    snapdir = sys.argv[1].rstrip('/')
+    redshifts = redshifts_snapshots(snapdir)
     zmax = 5
     snapstart, snapend = np.flatnonzero(redshifts <= zmax).min(), np.flatnonzero(redshifts <= zmax).max()
 
-    snapdir = os.path.join(simdir, 'output/')
-    snapdir = snapdir if os.path.exists(snapdir) else simdir
-    halo = os.path.basename(simdir)
+    halo = os.path.basename(snapdir)
     find_Rvir_halo(snapdir, halo, snapstart, snapend)
     
     plot_Rvir(halo)
