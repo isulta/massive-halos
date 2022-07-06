@@ -138,7 +138,7 @@ def load_Rvir_allsnaps(snapdir, ahf_path=None, outputFlag=True, simname=None):
     # save Rvir and redshift data
     if outputFlag: 
         simname = os.path.basename(snapdir.rstrip('/')) if simname is None else simname
-        fname = f'data/Rvir_{simname}.h5'
+        fname = f'data/Rvir/Rvir_{simname}.h5'
         dicttoh5(res, fname, mode='w')
         print(f'Saved res to {fname}.')
 
@@ -154,25 +154,27 @@ def Rvir_sim(snapdir, simname=None, useNoAGNFb=True):
     redshifts = redshifts_snapshots(snapdir)
 
     simname = os.path.basename(snapdir.rstrip('/')) if simname is None else simname
-    fname = f'data/Rvir_{simname}.h5'
+    fname = f'data/Rvir/Rvir_{simname}.h5'
     if os.path.exists(fname) and (not useNoAGNFb or '_noAGNfb' in snapdir):
         res = h5todict(fname)
         print(f'Found {fname} and loaded res.')
-        Rvir_allsnaps = dict(zip(res['snapnum'], res['Rvir']))
     else:
         print(f'Loading No AGN feedback file instead of {fname}...')
-        fname = f'data/Rvir_{simname.split("_")[0]}_noAGNfb.h5'
-        res = h5todict(fname)
-        print(f'Found {fname} and loaded res.')
+        fname = f'data/Rvir/Rvir_{simname.split("_")[0]}_noAGNfb.h5'
+        resNoAGNfb = h5todict(fname)
+        print(f'Found {fname} and loaded resNoAGNfb.')
 
         # Set Rvir_allsnaps
-        _, idx1, idx2 = np.intersect1d(redshifts, res['z'], return_indices=True)
-        Rvir_allsnaps = { i1:res['Rvir'][i2] for i1, i2 in zip(idx1[::-1], idx2[::-1]) }
+        _, idx1, idx2 = np.intersect1d(redshifts, resNoAGNfb['z'], return_indices=True)
+        res = {}
+        res['Rvir'] = resNoAGNfb['Rvir'][idx2[::-1]]
+        res['snapnum'] = idx1[::-1]
+        res['z'] = resNoAGNfb['z'][idx2[::-1]]
         
         # Check if all snapshots for which an Rvir match was found are contiguous
-        assert np.array_equal( sorted(Rvir_allsnaps.keys()), np.arange(idx1.min(), idx1.max()+1) ), 'Redshift match not found for at least one intermediate snapshot.'
+        assert np.array_equal( res['snapnum'], np.arange(idx1.min(), idx1.max()+1) ), 'Redshift match not found for at least one intermediate snapshot.'
     
-    return Rvir_allsnaps, redshifts
+    return res, redshifts
 
 ### Halo centering ###
 def center_of_mass(coords, masses):

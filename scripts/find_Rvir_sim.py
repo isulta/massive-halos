@@ -25,10 +25,10 @@ def find_Rvir_halo(snapdir, halo, snapstart, snapend):
     except:
         pass
 
-    h5_write_dict(f'data/findRvir_{halo}.h5', res, 'res')
+    h5_write_dict(f'data/Rvir/findRvir_{halo}.h5', res, 'res')
 
 def plot_Rvir(halo):
-    res = h5_read_dict(f'data/findRvir_{halo}.h5', 'res')
+    res = h5_read_dict(f'data/Rvir/findRvir_{halo}.h5', 'res')
     plt.figure()
     plt.plot(res['z'], res['Rvir'])
     plt.xlabel('z')

@@ -26,3 +26,10 @@ git config --global user.email "isultan030@gmail.com"
 git config --global user.name "Imran Sultan"
 git config --global alias.st status
 git config --global alias.ci commit
+
+cd /home/jovyan/home
+mkdir data
+cd data
+ln -s /home/jovyan/fire2/CR_suite/m12f_mass56000/cr_700 m12f_noAGNfb
+ln -s /home/jovyan/fire2/CR_suite/m12i_mass56000/cr_700 m12i_noAGNfb
+ln -s /home/jovyan/fire2/CR_suite/m12q_res57000/cr_700 m12q_noAGNfb
