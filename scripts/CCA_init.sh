@@ -5,6 +5,7 @@ cd /home/jovyan/home
 conda install -y vim htop numpy matplotlib=3.4.2 numba git astropy pyyaml tqdm hdf5
 conda install -y -c conda-forge ffmpeg
 conda install -y -c conda-forge silx
+conda install -y -c anaconda joblib
 
 mkdir tools projects
 
@@ -19,7 +20,7 @@ git clone https://github.com/agurvich/FIRE_studio
 cd ../projects
 git clone https://github.com/isulta/massive-halos
 
-export PYTHONPATH="${PYTHONPATH}:/home/jovyan/home/tools"
+export PYTHONPATH="${PYTHONPATH}:/home/jovyan/home/tools:/home/jovyan/home/tools/itk:/home/jovyan/home/projects/massive-halos"
 
 cd /home/jovyan/home/projects/massive-halos
 git config --global user.email "isultan030@gmail.com"
