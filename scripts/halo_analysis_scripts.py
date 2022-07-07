@@ -268,16 +268,21 @@ def load_p0(snapdir, snapnum, ahf_path=None, Rvir=None, loud=1, keys_to_extract=
     
     return p0
 
-'''Finds virial radius (units physical kpc) given particle dict and halo center.
+'''Finds virial radius (units physical kpc) given particle dict and halo center, using spherical overdensity definition.
 If `halo` and `snapnum` are defined, a plot of density vs. distance from halo center is saved.
+The virial mass (mass within a sphere of radius Rvir centered at posC) is also returned in units Msun.
 '''
-def find_Rvir(part, posC=None, halo=None, snapnum=None):
+def find_Rvir_SO(part, posC=None, halo=None, snapnum=None):
     if posC is None:
         posC = part[0]['posC']
 
     Masses = []
     r = []
     for ptype, p_i in part.items():
+        if not 'Masses' in p_i.keys(): #some simulations don't have ptype 5 (black holes)
+            print(f'{halo}: Masses not found for ptype {ptype} at snapshot {snapnum}')
+            continue
+        
         Masses.append(p_i['Masses'])
         
         # position relative to center
@@ -314,7 +319,8 @@ def find_Rvir(part, posC=None, halo=None, snapnum=None):
         plt.savefig(f'Figures/density/density_{halo}_snapnum_{snapnum}.png')
         plt.close()
     
-    return r[np.flatnonzero(Density <= rhovir)[0]] # return Rvir in units physical kpc
+    idx_vir = np.flatnonzero(Density <= rhovir)[0]
+    return r[idx_vir], Masses[idx_vir] # return Rvir in units physical kpc, and Mvir in units Msun
     # simple linear interpolation with next closest point, and InterpolatedUnivariateSpline.roots() both seem to return approximately same Rvir as the 1 point method above.
 
 def load_allparticles(snapdir, snapnum, particle_types=[0,1,2,4,5], keys_to_extract={0:['Coordinates', 'Masses', 'Density', 'Temperature', 'InternalEnergy'],1:['Coordinates', 'Masses'],2:['Coordinates', 'Masses'],4:['Coordinates', 'Masses'],5:['Coordinates', 'Masses']}, ptype_centering=1, Rvir=None, ahf_path=None, loud=1):
@@ -342,7 +348,9 @@ def load_allparticles(snapdir, snapnum, particle_types=[0,1,2,4,5], keys_to_extr
     if loud:
         print(f"Loading redshift {part[particle_types[0]]['Redshift']}")
 
-    posC = halo_center_wrapper(part[ptype_centering])[0]
+    # posC = halo_center_wrapper(part[ptype_centering])[0]
+    # posC = halo_center_wrapper(part[ptype_centering], shrinkpercent=2.5, minparticles=1000, initialradiusfactor=1)[0]
+    posC = halo_center_wrapper(part[ptype_centering], shrinkpercent=10, minparticles=1000, initialradiusfactor=1)[0]
 
     if ahf_path:
         _, Rvir = load_AHF('', snapnum, part[particle_types[0]]['Redshift'], hubble=part[particle_types[0]]['HubbleParam'], ahf_path=ahf_path, extra_names_to_read=[])
