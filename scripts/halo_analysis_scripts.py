@@ -349,8 +349,8 @@ def load_allparticles(snapdir, snapnum, particle_types=[0,1,2,4,5], keys_to_extr
         print(f"Loading redshift {part[particle_types[0]]['Redshift']}")
 
     # posC = halo_center_wrapper(part[ptype_centering])[0]
-    # posC = halo_center_wrapper(part[ptype_centering], shrinkpercent=2.5, minparticles=1000, initialradiusfactor=1)[0]
-    posC = halo_center_wrapper(part[ptype_centering], shrinkpercent=10, minparticles=1000, initialradiusfactor=1)[0]
+    posC = halo_center_wrapper(part[ptype_centering], shrinkpercent=2.5, minparticles=1000, initialradiusfactor=1)[0] #most accurate parameters
+    # posC = halo_center_wrapper(part[ptype_centering], shrinkpercent=10, minparticles=1000, initialradiusfactor=1)[0] #pretty accurate parameters and 2x faster than shrinkpercent=2.5 (some minor problems, e.g. a small dip at z=6 for h29_noAGNfb)
 
     if ahf_path:
         _, Rvir = load_AHF('', snapnum, part[particle_types[0]]['Redshift'], hubble=part[particle_types[0]]['HubbleParam'], ahf_path=ahf_path, extra_names_to_read=[])
