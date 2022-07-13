@@ -2,7 +2,6 @@
 '''
 from scripts.halo_analysis_scripts import *
 from abg_python.system_utils import getfinsnapnum
-import sys
 from joblib import Parallel, delayed
 
 def find_Rvir_halo(snapdir, halo, snapstart, snapend, resume=True):
@@ -32,44 +31,56 @@ def find_Rvir_halo(snapdir, halo, snapstart, snapend, resume=True):
         plot_Rvir(halo)
 
 def find_Rvir_snapnum(snapdir, snapnum):
-    part = load_allparticles(snapdir, snapnum, loud=False)
+    try:
+        part = load_allparticles(snapdir, snapnum, loud=False)
+    except OSError: #snapshot not found or snapshot subfile corrupted
+        print(f'{snapdir}: failed to load snapshot {snapnum}', flush=True)
+        return -1, -1, -1, -1
     Rvir, Mvir = find_Rvir_SO(part)
     z = part[0]['Redshift']
     return snapnum, z, Rvir, Mvir
 
 def find_Rvir_halo_parallel(snapdir, halo, snapstart, snapend, n_jobs=-4, verbose=10):
-    print(f'{halo}: Starting find_Rvir_SO from snapnum={snapstart} to {snapend} in snapdir={snapdir}')
+    print(f'{halo}: Starting find_Rvir_SO from snapnum={snapstart} to {snapend} in snapdir={snapdir}', flush=True)
     res_par = Parallel(n_jobs=n_jobs, verbose=verbose)(delayed(find_Rvir_snapnum)(snapdir, i) for i in range(snapstart, snapend+1))
 
     res = {
-        'snapnum': [ t[0] for t in res_par ], 
-        'z': [ t[1] for t in res_par ], 
-        'Rvir': [ t[2] for t in res_par ], 
-        'Mvir': [ t[3] for t in res_par ]
+        'snapnum': [ t[0] for t in res_par if t[0] != -1 ], 
+        'z': [ t[1] for t in res_par if t[0] != -1 ], 
+        'Rvir': [ t[2] for t in res_par if t[0] != -1 ], 
+        'Mvir': [ t[3] for t in res_par if t[0] != -1 ]
         }
     
     fname = f'data/Rvir/findRvirSO_{halo}.h5'
     dicttoh5(res, fname, mode='w')
-    print(f'Saved to {fname}')
+    print(f'Saved to {fname}', flush=True)
 
 def plot_Rvir(halo):
     res = h5todict(f'data/Rvir/findRvirSO_{halo}.h5')
     plt.figure()
-    plt.plot(res['z'], res['Rvir'])
+    plt.plot(res['z'], res['Rvir'], '-.')
     plt.xlabel('z')
     plt.ylabel('Rvir (physical kpc)')
     plt.title(f'findRvirSO_{halo}')
     plt.savefig(f'Figures/findRvirSO/findRvirSO_{halo}.png')
     plt.close()
 
-if __name__ == '__main__':
-    snapdir = sys.argv[1].rstrip('/')
-    zmax = float(sys.argv[2])
+def main(snapdir, zmax, n_jobs=-4, verbose=10):
+    snapdir = snapdir.rstrip('/')
+    zmax = float(zmax)
 
     redshifts = redshifts_snapshots(snapdir)
     snapstart, snapend = np.flatnonzero(redshifts <= zmax).min(), np.flatnonzero(redshifts <= zmax).max()
-    snapend = getfinsnapnum(os.path.join(snapdir, 'output/') if os.path.exists(os.path.join(snapdir, 'output/')) else snapdir)
+    try:
+        snapend = getfinsnapnum(os.path.join(snapdir, 'output/') if os.path.exists(os.path.join(snapdir, 'output/')) else snapdir)
+    except ValueError:#improper snapshot file name
+        print(f'{snapdir}: getfinsnapnum error', flush=True)
+        return
 
     halo = os.path.basename(snapdir)
-    find_Rvir_halo_parallel(snapdir, halo, snapstart, snapend)
+    find_Rvir_halo_parallel(snapdir, halo, snapstart, snapend, n_jobs, verbose)
     plot_Rvir(halo)
+
+if __name__ == '__main__':
+    import sys
+    main(sys.argv[1], sys.argv[2])
