@@ -58,10 +58,10 @@ def find_Rvir_halo_parallel(snapdir, halo, snapstart, snapend, n_jobs=-4, verbos
 def plot_Rvir(halo):
     res = h5todict(f'data/Rvir/findRvirSO_{halo}.h5')
     plt.figure()
-    plt.plot(res['z'], res['Rvir'], '-o')
+    plt.plot(res['z'], res['Rvir'], '-o', ms=4)
     plt.xlabel('z')
     plt.ylabel('Rvir (physical kpc)')
-    plt.title(f'findRvirSO_{halo}')
+    plt.title(f'find_Rvir_SO\n{halo}', fontsize=7)
     plt.savefig(f'Figures/findRvirSO/findRvirSO_{halo}.png')
     plt.close()
 
