@@ -3,14 +3,9 @@ n_jobs = -1
 verbose = 1
 mempernode = 192 # memory per Frontera node in GB
 
-codedir = '/work2/08044/tg873432/frontera/projects/massive-halos'
-import sys
-sys.path.append(codedir)
-
 from mpi4py import MPI
 from scripts.find_Rvir_sim import main, read_param_file, sim_path, params_from_filename, get_dir_size
 import numpy as np
-import os.path
 
 comm = MPI.COMM_WORLD
 size = comm.Get_size()
@@ -18,7 +13,7 @@ rank = comm.Get_rank()
 
 # Load paths to all AGN sims on Frontera on rank 0, and broadcast to all ranks
 if rank==0:
-    allsims = np.genfromtxt(os.path.join(codedir, 'sims_frontera.txt'), dtype=str)
+    allsims = np.genfromtxt('sims_frontera.txt', dtype=str)
     allsimpaths = np.sort([ sim_path(params_from_filename(sim), 'frontera') for sim in allsims ])
 
 else:
