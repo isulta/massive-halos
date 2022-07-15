@@ -1,47 +1,3 @@
-# good AGN feedback models
-CCAbaseDir = '/home/jovyan/fire2/AGN_suite/'
-CCA_goodsim_h206 = lambda model : CCAbaseDir + f'm13h206_m3e5/m13h206_m3e5_{model}_alpha10_gacc30_accf1_vw10000_cr1e-2_msd1e-8_sdp3e-3_mw4e-7_fa0.5_tw1e4_fmom1'
-CCA_sims = {
-    'push':{
-        'h206': CCA_goodsim_h206('push'),
-        'h29':CCAbaseDir+'m13h29_m3e5/m13h29_m3e5_push_alpha10_gacc30_accf1_vw10000_cr1e-2_msd1e-8_sdp5e-3_mw4e-7_fa0.5_tw1e4_fmom1'
-    },
-    'jet':{
-        'h206': CCA_goodsim_h206('jet')
-    },
-    'spawn':{
-        'h206': CCA_goodsim_h206('spawn')
-    }
-}
-
-FronterabaseDir = '/scratch3/01799/phopkins/bhfb_suite_done/'
-Frontera_h206push_base = FronterabaseDir + 'm13h206_m3e5/m13h206_m3e5_push_'
-Frontera_sims = {
-    'push':{
-        'h206':{
-            'radfboff':             Frontera_h206push_base + 'alpha10_gacc30_accf1_vw10000_cr1e-2_msd1e-8_sdp3e-3_mw4e-7_fa0.5_tw1e4_fmom1e-4',
-            'good':                 Frontera_h206push_base + 'alpha10_gacc30_accf1_vw10000_cr1e-2_msd1e-8_sdp3e-3_mw4e-7_fa0.5_tw1e4_fmom1',
-            'CRsoff_veryhighradfb': Frontera_h206push_base + 'alpha10_gacc30_accf1_vw10000_cr1e-6_msd1e-8_sdp3e-3_mw4e-7_fa0.5_tw1e4_fmom100',
-            'CRsoff':               Frontera_h206push_base + 'alpha10_gacc30_accf1_vw10000_cr1e-6_msd1e-8_sdp3e-3_mw4e-7_fa0.5_tw1e4_fmom1',
-            'veryslowwinds':        Frontera_h206push_base + 'alpha10_gacc30_accf1_vw100_cr1e-2_msd1e-8_sdp3e-3_mw4e-7_fa0.5_tw1e4_fmom1',
-            'CRsoff_veryfastwinds': Frontera_h206push_base + 'alpha10_gacc30_accf1_vw42500_cr1e-6_msd1e-8_sdp3e-3_mw4e-7_fa0.5_tw1e4_fmom1'
-        }
-    }
-}
-
-QuestbaseDir = '/projects/b1026/anglesd/FIRE/'
-Quest_nofb_m13_id = '_HR_sn1dy300ro100ss'
-Quest_nofb_m13 = lambda halo : QuestbaseDir + halo + Quest_nofb_m13_id
-Quest_nofb_m13_ahf = lambda halo : '/projects/b1026/halo_files/anglesd_m13/' + halo + Quest_nofb_m13_id
-Quest_sims = {
-    'nofb':{
-        'h206': Quest_nofb_m13('h206'), #A1
-        'h29':  Quest_nofb_m13('h29'),  #A2
-        'h113': Quest_nofb_m13('h113'), #A4
-        'h2':   Quest_nofb_m13('h2')    #A8
-    }
-}
-
 COLOR_SCHEME = ['#2402ba','#b400e0','#98c1d9','#ff0000','#292800','#ff9b71']
 
 profilelabels = {
@@ -58,14 +14,16 @@ profilelabels = {
 import numpy as np
 import matplotlib.pyplot as plt
 from numba import njit
-from abg_python.snapshot_utils import openSnapshot
-from abg_python.cosmo_utils import load_AHF, load_rockstar
 from astropy.constants import k_B
 from astropy import units
-from itk import inrange, loadpickle, pickle_save_dict, n_array_equal, sync_lim
 from silx.io.dictdump import dicttoh5, h5todict
 from tqdm import tqdm
 import os.path
+
+from scripts.simulations import *
+from abg_python.snapshot_utils import openSnapshot
+from abg_python.cosmo_utils import load_AHF, load_rockstar
+from itk import inrange, loadpickle, pickle_save_dict, n_array_equal, sync_lim, get_dir_size
 
 def read_param_file(simdir, params_file='params.txt'):
     '''Reads GIZMO parameter file and returns dictionary of parameters.
