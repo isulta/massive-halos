@@ -293,7 +293,7 @@ def load_allparticles(snapdir, snapnum, particle_types=[0,1,2,4,5], keys_to_extr
         `particle_types`: list of particle types to load
         `keys_to_extract`: dict that maps each particle type to a list of keys to read. If dict does not contain a particle type, ALL keys are read in for that particle type.
         `ptype_centering`: particle type used to find halo center (shrinking sphere method)
-        `Rvir`: virial radius in units of physical kpc
+        `Rvir`: virial radius in units of physical kpc (If `'find_Rvir_SO'` is passed for `Rvir`, `Rvir` and `Mvir` are found using SO method.)
         `ahf_path`: directory with AHF file. If defined, `Rvir` will be read in with units physical kpc (this will overwrite any value passed for `Rvir`).
         `loud`: verbose output if `True`
     '''
@@ -310,6 +310,8 @@ def load_allparticles(snapdir, snapnum, particle_types=[0,1,2,4,5], keys_to_extr
     posC = halo_center_wrapper(part[ptype_centering], shrinkpercent=2.5, minparticles=1000, initialradiusfactor=1)[0] #most accurate parameters
     # posC = halo_center_wrapper(part[ptype_centering], shrinkpercent=10, minparticles=1000, initialradiusfactor=1)[0] #pretty accurate parameters and 2x faster than shrinkpercent=2.5 (some minor problems, e.g. a small dip at z=6 for h29_noAGNfb)
 
+    if Rvir == 'find_Rvir_SO': #Find Rvir and Mvir using SO method
+        Rvir, Mvir = find_Rvir_SO(part, posC)
     if ahf_path:
         _, Rvir = load_AHF('', snapnum, part[particle_types[0]]['Redshift'], hubble=part[particle_types[0]]['HubbleParam'], ahf_path=ahf_path, extra_names_to_read=[])
 
@@ -318,6 +320,7 @@ def load_allparticles(snapdir, snapnum, particle_types=[0,1,2,4,5], keys_to_extr
         
         if Rvir is not None:
             p_i['Rvir'] = Rvir #virial radius in units physical kpc
+            p_i['Mvir'] = Mvir #virial mass in units Msun
 
             # position relative to center
             p_i_CoordinatesRelative = p_i['Coordinates'] - posC
@@ -372,7 +375,7 @@ def profiles( part, Tmask=True, rbins=np.power(10, np.arange(np.log10(0.00525863
     p0 = part[0]
     rmid = (rbins[:-1]+rbins[1:])/2 #in units of Rvir
     logprofiles = {'T':[], 'rho':[], 'P_th':[], 'e_CR':[], 'P_CR':[], 'T lin':[], 'P_th lin':[], 'P_CR lin':[]}
-    Mbins = { f'PartType{ptype}':[] for ptype in part.keys() }
+    Mbins = { f'TotalMass:PartType{ptype}':[] for ptype in part.keys() }
 
     for r0,r1 in zip(rbins[:-1],rbins[1:]):
         idx = np.flatnonzero(Tmask & inrange( p0['r_scaled'], (r0, r1) ))
@@ -418,9 +421,9 @@ def profiles( part, Tmask=True, rbins=np.power(10, np.arange(np.log10(0.00525863
         for ptype, p_i in part.items():
             idx_i = np.flatnonzero(inrange( p_i['r_scaled'], (r0, r1) ))
             Mbin_i = np.sum(p_i['Masses'][idx_i])
-            Mbins[f'PartType{ptype}'].append(Mbin_i)
+            Mbins[f'TotalMass:PartType{ptype}'].append(Mbin_i)
     
-    resdict = {'rmid':rmid, **logprofiles, **Mbins, 'posC':p0['posC'], 'Rvir':p0['Rvir']}
+    resdict = {'rmid':rmid, **logprofiles, **Mbins, 'posC':p0['posC'], 'Rvir':p0['Rvir'], 'Mvir':p0['Mvir'], 'Redshift':p0['Redshift']}
     if outfile:
         pickle_save_dict(outfile, resdict)
     

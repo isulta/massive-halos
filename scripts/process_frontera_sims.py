@@ -1,4 +1,4 @@
-zmax = 10
+zmax = 4
 n_jobs = -1
 verbose = 1
 mempernode = 192 # memory per Frontera node in GB
@@ -6,6 +6,8 @@ mempernode = 192 # memory per Frontera node in GB
 from mpi4py import MPI
 from scripts.find_Rvir_sim import main, read_param_file, sim_path, params_from_filename, get_dir_size
 import numpy as np
+import time
+from datetime import timedelta
 
 comm = MPI.COMM_WORLD
 size = comm.Get_size()
@@ -25,6 +27,7 @@ ranksimpaths = list( allsimpaths[np.arange(rank, len(allsimpaths), size)] )
 print(f'Rank {rank} of {size} beginning to process {len(ranksimpaths)} simulations.', flush=True)
 
 # Process all simulations, adjusting n_jobs to account for nodes' memory limit
+start_time = time.time()
 for snapdir in ranksimpaths:
     simsize, maxfilesize = get_dir_size(str(snapdir)) * 1e-9 * 4 # 4 * total size of simulation and max file size in GB
     print(f'\n{rank}: {snapdir} is {round(simsize,2)}GB', flush=True)
@@ -34,6 +37,6 @@ for snapdir in ranksimpaths:
         print(f'{rank}: using n_jobs={n_jobs} for {snapdir} due to memory exceeding memory/node', flush=True)
     else:
         n_jobs = -1
-    main(snapdir, zmax, n_jobs, verbose)
+    main(snapdir, zmax, n_jobs, verbose, onlyFindRvir=False)
 
-print(f'Rank {rank} of {size} completed processing {len(ranksimpaths)} simulations.', flush=True)
+print(f'Rank {rank} of {size} completed processing {len(ranksimpaths)} simulations in {timedelta(seconds=time.time()-start_time)}', flush=True)

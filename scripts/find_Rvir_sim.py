@@ -65,7 +65,26 @@ def plot_Rvir(halo):
     plt.savefig(f'Figures/findRvirSO/findRvirSO_{halo}.png')
     plt.close()
 
-def main(snapdir, zmax, n_jobs=-4, verbose=10):
+def calculate_profiles_snapnum(snapdir, snapnum):
+    try:
+        part = load_allparticles(snapdir, snapnum, Rvir='find_Rvir_SO', loud=False)
+    except OSError: #snapshot not found or snapshot subfile corrupted
+        print(f'{snapdir}: failed to load snapshot {snapnum}', flush=True)
+        return None
+    with np.errstate(divide='ignore', invalid='ignore'): res = profiles(part)
+    return res
+
+def calculate_profiles_halo_parallel(snapdir, halo, snapstart, snapend, n_jobs=-4, verbose=10):
+    print(f'{halo}: Calculating profiles from snapnum={snapstart} to {snapend} in snapdir={snapdir}', flush=True)
+    res_par = Parallel(n_jobs=n_jobs, verbose=verbose)(delayed(calculate_profiles_snapnum)(snapdir, i) for i in range(snapstart, snapend+1))
+
+    res = { 'SnapNum' + str(snapnum).zfill(3): res_par[i] for i,snapnum in enumerate(range(snapstart, snapend+1)) if res_par[i] is not None }
+    
+    fname = f'data/profiles/profiles_{halo}.h5'
+    dicttoh5(res, fname, mode='w')
+    print(f'Saved to {fname}', flush=True)
+
+def main(snapdir, zmax, n_jobs=-4, verbose=10, onlyFindRvir=True):
     snapdir = snapdir.rstrip('/')
     zmax = float(zmax)
 
@@ -78,8 +97,11 @@ def main(snapdir, zmax, n_jobs=-4, verbose=10):
         return
 
     halo = os.path.basename(snapdir)
-    find_Rvir_halo_parallel(snapdir, halo, snapstart, snapend, n_jobs, verbose)
-    plot_Rvir(halo)
+    if onlyFindRvir:
+        find_Rvir_halo_parallel(snapdir, halo, snapstart, snapend, n_jobs, verbose)
+        plot_Rvir(halo)
+    else:
+        calculate_profiles_halo_parallel(snapdir, halo, snapstart, snapend, n_jobs, verbose)
 
 if __name__ == '__main__':
     import sys
