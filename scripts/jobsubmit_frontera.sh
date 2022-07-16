@@ -45,6 +45,7 @@
 #SBATCH --mail-user=imransultan2025@u.northwestern.edu
 
 # Any other commands must follow all #SBATCH directives...
+export PYTHONPATH=${WORK}/tools/itk:${WORK}/projects/massive-halos
 module list
 pwd
 date

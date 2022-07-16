@@ -302,7 +302,9 @@ def load_allparticles(snapdir, snapnum, particle_types=[0,1,2,4,5], keys_to_extr
     keys_to_extract = {**{ptype:None for ptype in particle_types}, **keys_to_extract} #load all keys for particle types for which keys were not given
     
     part = { ptype : openSnapshot(snapdir, snapnum, ptype, loud=loud, keys_to_extract=keys_to_extract[ptype]) for ptype in particle_types }
-    
+    for ptype in list(part.keys()): #Remove particle types that don't exist at this snapshot from part
+        if 'Coordinates' not in part[ptype]: 
+            del part[ptype]
     if loud:
         print(f"Loading redshift {part[particle_types[0]]['Redshift']}")
 
