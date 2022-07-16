@@ -13,7 +13,7 @@
 
 module purge
 
-ZMAX=10
+ZMAX=4
 
 cd /home/ias627/projects/massive_halos/
 

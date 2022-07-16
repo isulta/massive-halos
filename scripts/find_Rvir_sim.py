@@ -105,4 +105,4 @@ def main(snapdir, zmax, n_jobs=-4, verbose=10, onlyFindRvir=True):
 
 if __name__ == '__main__':
     import sys
-    main(sys.argv[1], sys.argv[2])
+    main(sys.argv[1], sys.argv[2], onlyFindRvir=False)
