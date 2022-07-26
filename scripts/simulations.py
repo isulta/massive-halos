@@ -1,6 +1,7 @@
 '''Simulation paths (AGN and no-AGN) on Quest, CCA, and Frontera
 '''
 import numpy as np
+import os.path
 
 '''Sarah functions'''
 # Takes a simulation filename (like the ones written in the .txt files) and converts it into a dictionary of parameters
@@ -36,7 +37,7 @@ def filename_from_params(params):
 
 # Returns the names + paths of the "control" set, plus the snapshot indices in the 600-snapshot runs that correspond to the same redshifts as the 60-snapshot runs
 # Note: requires you to have the 60-snapshot timing file, which you can find in any of the AGN feedback simulation folders
-def controlsims():
+def controlsims(create_symlinks=False):
     simnames = ['m10q_m2e2', 'm10v_m2e2',
                 'm11a_m2e3', 'm11b_m2e3', 'm11d_m7e3', 'm11e_m7e3', 
                 'm11f_m1e4', 'm11h_m7e3', 'm11i_m7e3', 'm11q_m7e3', 
@@ -49,14 +50,19 @@ def controlsims():
                     'CR_suite/m12b_res7100/cr_700', 'CR_suite/m12f_mass56000/cr_700', 'CR_suite/m12i_mass56000/cr_700', 'CR_suite/m12m_mass56000/cr_700', 
                     'CR_suite/m12q_res57000/cr_700', 'CR_suite/m12r_res7100/cr_700', 'CR_suite/m12w_res7100/cr_700',
                     'MassiveFIRE/A8_res33000', 'MassiveFIRE/A2_res33000', 'MassiveFIRE/A4_res33000', 'MassiveFIRE/A1_res33000']
-    
-    asnaps = np.loadtxt('../data/snapshot_scale-factors.txt')
-    snaps_600 = np.loadtxt('../../fire2/core/m12i_res57000/snapshot_times.txt')
-    asnaps_600 = snaps_600[:,1]
-    isnaps_600 = snaps_600[:,0]
-    isnaps = np.interp(asnaps, asnaps_600, isnaps_600).astype(int)
-    
-    return simnames, controlpaths, isnaps
+    if create_symlinks:
+        for s,c in zip(simnames, controlpaths):
+            src = os.path.join('/home/jovyan/fire2/', c)
+            dst = os.path.join('/home/jovyan/home/data', s.split('_')[0]+'_noAGNfb')
+            if os.path.exists(src): os.symlink(src, dst)
+    else:
+        asnaps = np.loadtxt('../data/snapshot_scale-factors.txt')
+        snaps_600 = np.loadtxt('../../fire2/core/m12i_res57000/snapshot_times.txt')
+        asnaps_600 = snaps_600[:,1]
+        isnaps_600 = snaps_600[:,0]
+        isnaps = np.interp(asnaps, asnaps_600, isnaps_600).astype(int)
+        
+        return simnames, controlpaths, isnaps
 
 # Returns the path to a simulation data directory given the parameter dictionary and the machine it lives on
 def sim_path(params, machine=None):
