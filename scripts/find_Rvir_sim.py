@@ -71,6 +71,9 @@ def calculate_profiles_snapnum(snapdir, snapnum):
     except OSError: #snapshot not found or snapshot subfile corrupted
         print(f'{snapdir}: failed to load snapshot {snapnum}', flush=True)
         return None
+    except KeyError: #snapshot_utils.py", line 150, in openSnapshot
+        print(f'{snapdir}: failed to load snapshot {snapnum} KeyError', flush=True)
+        return None
     with np.errstate(divide='ignore', invalid='ignore'): res = profiles(part)
     return res
 
