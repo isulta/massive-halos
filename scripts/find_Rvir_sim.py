@@ -33,8 +33,8 @@ def find_Rvir_halo(snapdir, halo, snapstart, snapend, resume=True):
 def find_Rvir_snapnum(snapdir, snapnum):
     try:
         part = load_allparticles(snapdir, snapnum, loud=False)
-    except OSError: #snapshot not found or snapshot subfile corrupted
-        print(f'{snapdir}: failed to load snapshot {snapnum}', flush=True)
+    except OSError as e: #snapshot not found or snapshot subfile corrupted
+        print(f'{snapdir}: failed to load snapshot {snapnum} OSError {e}', flush=True)
         return -1, -1, -1, -1
     Rvir, Mvir = find_Rvir_SO(part)
     z = part[0]['Redshift']
@@ -68,11 +68,11 @@ def plot_Rvir(halo):
 def calculate_profiles_snapnum(snapdir, snapnum):
     try:
         part = load_allparticles(snapdir, snapnum, Rvir='find_Rvir_SO', loud=False)
-    except OSError: #snapshot not found or snapshot subfile corrupted
-        print(f'{snapdir}: failed to load snapshot {snapnum}', flush=True)
+    except OSError as e: #snapshot not found or snapshot subfile corrupted
+        print(f'{snapdir}: failed to load snapshot {snapnum} OSError {e}', flush=True)
         return None
-    except KeyError: #snapshot_utils.py", line 150, in openSnapshot
-        print(f'{snapdir}: failed to load snapshot {snapnum} KeyError', flush=True)
+    except KeyError as e: #snapshot_utils.py", line 150, in openSnapshot
+        print(f'{snapdir}: failed to load snapshot {snapnum} KeyError {e}', flush=True)
         return None
     with np.errstate(divide='ignore', invalid='ignore'): res = profiles(part)
     return res
@@ -95,8 +95,8 @@ def main(snapdir, zmax, n_jobs=-4, verbose=10, onlyFindRvir=True):
     snapstart, snapend = np.flatnonzero(redshifts <= zmax).min(), np.flatnonzero(redshifts <= zmax).max()
     try:
         snapend = getfinsnapnum(os.path.join(snapdir, 'output/') if os.path.exists(os.path.join(snapdir, 'output/')) else snapdir)
-    except ValueError:#improper snapshot file name
-        print(f'{snapdir}: getfinsnapnum error', flush=True)
+    except ValueError as e:#improper snapshot file name
+        print(f'{snapdir}: getfinsnapnum error ValueError {e}', flush=True)
         return
 
     halo = os.path.basename(snapdir)

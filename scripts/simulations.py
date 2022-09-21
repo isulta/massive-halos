@@ -86,6 +86,17 @@ def sim_path(params, machine=None):
         return filebase + folder + filename_from_params(params)
 '''End Sarah functions'''
 
+# Returns path of FIRE-3 sims on Frontera
+def sim_path_fire3(filename):
+    filebase = '/scratch3/01799/phopkins/fire3_suite_done'
+    if filename == 'm13h02_m3e5_MHD_fire3_fireBH_Sep052021_crdiffc690_sdp1e-4_gacc31_fa0.5':
+        simbase = 'm13h002_m3e5'
+    elif filename == 'm13h29_m3e5_MHD_fire3_fireBH_Sep052021_crdiffc690_sdp1e-4_gacc31_fa0.5':
+        simbase = 'm13h029_m3e5'
+    else:
+        simbase = '_'.join( filename.split('_')[:2] )
+    return os.path.join(filebase, simbase,  filename)
+
 # good AGN feedback models
 CCAbaseDir = '/home/jovyan/fire2/AGN_suite/'
 CCA_goodsim_h206 = lambda model : CCAbaseDir + f'm13h206_m3e5/m13h206_m3e5_{model}_alpha10_gacc30_accf1_vw10000_cr1e-2_msd1e-8_sdp3e-3_mw4e-7_fa0.5_tw1e4_fmom1'

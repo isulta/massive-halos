@@ -2,9 +2,10 @@ zmax = 4
 n_jobs = -1
 verbose = 1
 mempernode = 192 # memory per Frontera node in GB
+dofire3 = True
 
 from mpi4py import MPI
-from scripts.find_Rvir_sim import main, read_param_file, sim_path, params_from_filename, get_dir_size
+from scripts.find_Rvir_sim import main, read_param_file, sim_path, params_from_filename, get_dir_size, sim_path_fire3
 import numpy as np
 import time
 from datetime import timedelta
@@ -15,9 +16,12 @@ rank = comm.Get_rank()
 
 # Load paths to all AGN sims on Frontera on rank 0, and broadcast to all ranks
 if rank==0:
-    allsims = np.genfromtxt('sims_frontera.txt', dtype=str)
-    allsimpaths = np.sort([ sim_path(params_from_filename(sim), 'frontera') for sim in allsims ])
-
+    if dofire3:
+        allsims = np.genfromtxt('sims_frontera_fire3.txt', dtype=str)
+        allsimpaths = np.sort([ sim_path_fire3(sim) for sim in allsims ])
+    else:
+        allsims = np.genfromtxt('sims_frontera.txt', dtype=str)
+        allsimpaths = np.sort([ sim_path(params_from_filename(sim), 'frontera') for sim in allsims ])
 else:
     allsimpaths = None
 allsimpaths = comm.bcast(allsimpaths, root=0)

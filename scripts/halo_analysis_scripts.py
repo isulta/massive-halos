@@ -263,7 +263,10 @@ def find_Rvir_SO(part, posC=None, halo=None, snapnum=None):
 
     with np.errstate(divide='ignore'): Density = Masses/Volume * 1.e9 # Density in units Msun/Mpc^3
 
-    OmegaM0, OmegaL0, hubble, z = part[0]['Omega0'], part[0]['OmegaLambda'], part[0]['HubbleParam'], part[0]['Redshift']
+    if 'Omega0' in part[0]: #FIRE-2
+        OmegaM0, OmegaL0, hubble, z = part[0]['Omega0'], part[0]['OmegaLambda'], part[0]['HubbleParam'], part[0]['Redshift']
+    else: #FIRE-3
+        OmegaM0, OmegaL0, hubble, z = part[0]['Omega_Matter'], part[0]['Omega_Lambda'], part[0]['HubbleParam'], part[0]['Redshift']
     rhovir = deltavir(OmegaM0, OmegaL0, z) * rhocritz(OmegaM0, OmegaL0, z) * hubble**2 # Virial density in units Msun/Mpc^3
 
     if halo is not None:
@@ -352,6 +355,7 @@ def u_CR(E_CR, M):
     '''Returns the specific CR energy in physical units (km/s)^2, 
     given `'CosmicRayEnergy'` in default units (1e10 Msun (km/s)^2), and mass in units 1e10 Msun.
     '''
+    if E_CR.ndim > 1: E_CR = np.sum(E_CR, axis=1) #I think this sums over all species for FIRE-3 sims with multidimensional CosmicRayEnergy
     return E_CR/M
 
 def Pressure(u, rho, gamma=None, typeP=None):
