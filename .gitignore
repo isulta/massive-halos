@@ -4,3 +4,4 @@ vizdata/
 slurm.*
 myjob.*
 .vscode/
+data/vtk*
