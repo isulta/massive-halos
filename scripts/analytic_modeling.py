@@ -1,0 +1,324 @@
+from astropy import units as un, constants as cons
+import numpy as np
+
+import cooling_flow as CF
+import HaloPotential as Halo
+import WiersmaCooling as Cool
+from scripts.precipitation import PrecipitationModel
+
+from scipy.integrate import cumtrapz
+from scipy.interpolate import interp1d
+from scipy.integrate import quad
+from scipy.misc import derivative
+from scipy.optimize import minimize
+import pickle
+from silx.io.dictdump import dicttoh5, h5todict
+from scipy.signal import savgol_filter
+from tqdm import tqdm
+
+from scripts.halo_analysis_scripts import *
+import matplotlib.colors
+# %matplotlib inline
+plt.rcParams['figure.dpi'] = 110
+
+Zsun = 0.02
+
+def spherical_velocities(v, r):
+    '''Given velocity v and position r cartesian arrays, calculates vrad, vtheta, vphi (each in same units as v).
+    vrad is defined as the INFLOW velocity (-vrad).
+    '''
+    r_mag = np.linalg.norm(r, axis=1)
+    vrad = -np.sum(v*r, axis=1) / r_mag #'vrad' is defined as the INFLOW velocity 
+    
+    # Calculate tangential velocities
+    theta = np.arctan2( np.sqrt(r[:,0]**2 + r[:,1]**2), r[:,2] )
+    phi = np.arctan2( r[:,1], r[:,0] )
+    rhat = np.column_stack((np.sin(theta)*np.cos(phi), np.sin(theta)*np.sin(phi), np.cos(theta)))
+    thetahat = np.column_stack((np.cos(theta)*np.cos(phi), np.cos(theta)*np.sin(phi), -np.sin(theta)))
+    phihat = np.column_stack((-np.sin(phi), np.cos(phi), np.zeros_like(phi)))
+    
+    vtheta = np.sum(v*thetahat, axis=1) # Same units as Velocities: pkm/s
+    vphi = np.sum(v*phihat, axis=1) # Same units as Velocities: pkm/s
+    return vrad, vtheta, vphi
+
+def calculateMr(p, Rmin=None, Rmax=None, bins=100):
+    if Rmin is None:
+        Rmin = 0.01 #pkpc
+        Rmax = 10 * p[1]['Rvir'] #pkpc
+    rbins = np.logspace(np.log10(Rmin), np.log10(Rmax), bins) #pkpc
+    # M(r)
+    pall = {}
+    pall['posC'] = p[1]['posC']
+    pall['Coordinates'] = np.concatenate([p[k]['Coordinates'] for k in p.keys()])
+    pall['Masses'] = np.concatenate([p[k]['Masses'] for k in p.keys()])
+    pall['r'] = np.linalg.norm(pall['Coordinates'] - pall['posC'], axis=1)
+
+    Mrbins = np.array([np.sum(pall['Masses'][pall['r']<=r]) for r in rbins]) * 1e10 #M(r) for r in rbins where [M]=Msun and [r]=pkpc
+    Mr = {'r':rbins, 'M(r)':Mrbins, 'Rvir':p[1]['Rvir']}
+    return Mr
+
+def velocity_COM(p, Rmax=1):
+    # Get COM's (r/Rvir<Rmax) velocity 
+    pall = {}
+    pall['Masses'] = np.concatenate([p[k]['Masses'] for k in p.keys()])
+    pall['Velocities'] = np.concatenate([p[k]['Velocities'] for k in p.keys()])
+    pall['r_scaled'] = np.concatenate([p[k]['r_scaled'] for k in p.keys()])
+
+    maskall = pall['r_scaled']<Rmax
+    velC = np.sum( (pall['Velocities'].T * pall['Masses']).T[maskall], axis=0 ) / np.sum( pall['Masses'][maskall] )
+    return velC
+   
+
+def part_calculations(p, Rmax_Z=1, usetcoolWiersma=True):
+    '''Calculate additional fields and add them to particle data dict.'''
+    # Shift velocity relative to COM's (r/Rvir<1) velocity
+    p[0]['Velocities'] -= velocity_COM(p)
+
+    # Calculate spherical velocites
+    p[0]['vrad'], p[0]['vtheta'], p[0]['vphi'] = spherical_velocities(v=p[0]['Velocities'], r=p[0]['Coordinates'] - p[0]['posC'])
+
+    # Calculate MachNumber
+    p[0]['MachNumber'] = p[0]['vrad'] / p[0]['SoundSpeed']
+
+    # Calculate mass-weighted average metallicity/Zsun within Rmax_Z*Rvir
+    p[0]['Z2Zsun']  = np.sum((p[0]['Metallicity'][:,0] * p[0]['Masses'])[p[0]['r_scaled']<=Rmax_Z]) / np.sum(p[0]['Masses'][p[0]['r_scaled']<=Rmax_Z]) / Zsun
+
+    # Calculate number density of hydrogen atoms
+    XH = 1 - p[0]['Metallicity'][:,0] - p[0]['Metallicity'][:,1] #hydrogen mass fraction
+    nH = ( XH * (p[0]['Density'] * 1e10 * un.Msun/un.kpc**3) / cons.m_p ).to(un.cm**-3) #number density of hydrogen atoms
+    p[0]['nH'] = nH.to(un.cm**-3).value
+
+    if usetcoolWiersma:
+        # Calculate cooling time from predicted CoolingRate from cooling flow solutions code (Wiersma et al. 2009 cooling functions)
+        cooling = Cool.Wiersma_Cooling(p[0]['Z2Zsun'],p[0]['Redshift'])
+        CoolingRate_pred = cooling.LAMBDA(p[0]['Temperature']*un.K, p[0]['nH']*(un.cm**-3)) * (p[0]['nH']*(un.cm**-3))**2
+        tcool_pred = ((Pressure(p[0]['InternalEnergy'], p[0]['Density'], typeP='thermal') * cons.k_B * un.K / un.cm**3) / ( CoolingRate_pred * (5/3-1) ))
+        p[0]['tcool'] = tcool_pred.to(un.Gyr).value
+    else:
+        # Calculate tcool from 'CoolingRate'='InternalEnergy'/tcool where tcool is in code units
+        p[0]['tcool'] = 1/p[0]['CoolingRate'] * p[0]['InternalEnergy']*(p[0]['HubbleParam']**-1 * un.kpc / (un.km/un.s)).to(un.Gyr).value#0.978
+
+    # Calculate Hubble time
+    p[0]['tHubble'] = (1/(100 * p[0]['HubbleParam'] * (un.km/un.s/un.Mpc))).to(un.Gyr)
+
+class Potential_FIRE(CF.Potential):
+    def __init__(self, Mr, Rmax=3):
+        self.Rvir = Mr['Rvir'][()]*un.kpc
+        
+        Phir = cumtrapz( Mr['M(r)'] / Mr['r']**2,  Mr['r'], initial=0)
+        Rvir3_idx = np.argmin(np.abs(Mr['r'] - Rmax*Mr['Rvir'][()]))
+        Phir = Phir - Phir[Rvir3_idx]
+        self.Phi_interp = interp1d(Mr['r'], Phir)
+        
+        vcr = np.sqrt(Mr['M(r)']/Mr['r'])
+        vcr = savgol_filter(vcr, 11, 2) #changed from 10 to 11
+        self.vc_interp = interp1d(Mr['r'], vcr)
+        
+        lnvcr = np.gradient(np.log(vcr), np.log(Mr['r']))
+        self.lnvc_interp = interp1d(Mr['r'], lnvcr)
+    def vc(self, r):
+        r = r.to(un.kpc).value
+        return ( self.vc_interp(r) * (cons.G*un.Msun/un.kpc)**0.5 ).to(un.km/un.s)
+    def Phi(self, r):
+        r = r.to(un.kpc).value
+        return self.Phi_interp(r) * (cons.G*un.Msun/un.kpc).to((un.km/un.s)**2)
+    def dlnvc_dlnR(self, r):
+        r = r.to(un.kpc).value
+        return self.lnvc_interp(r)
+    def get_Rcirc(self):
+        return minimize(lambda x: -self.vc(x*un.kpc), 1, method = 'Nelder-Mead').x[0] * un.kpc
+    def potential_test(self):
+        R_min = 0.1*un.kpc
+        R_max = 1.5*self.Rvir  
+        xarr = np.logspace(np.log10(R_min.to(un.kpc).value), np.log10(R_max.to(un.kpc).value), 100) * un.kpc
+
+        fig, axes = plt.subplots(1, 3, sharex=True, sharey=False, gridspec_kw={'wspace': .3, 'hspace':.04}, figsize=[4.8*3,4.8*1], dpi=150, facecolor='w')
+
+        axes[0].plot(xarr, self.Phi(xarr))
+        axes[0].set_xscale('log')
+        # axes[0].set_yscale('log')
+        axes[0].set_xlabel('$r$/kpc')
+        axes[0].set_ylabel('$\Phi$/($km^2$/$s^2$)')
+
+
+        axes[1].plot(xarr, self.vc(xarr))
+        axes[1].axvline(self.get_Rcirc().value, label='$R_{circ}$', c='k')
+        axes[1].legend()
+        axes[1].set_xscale('log')
+        axes[1].set_yscale('log')
+        axes[1].set_xlabel('$r$/kpc')
+        axes[1].set_ylabel('$v_c$/(km/s)')
+
+        axes[2].plot(xarr, self.dlnvc_dlnR(xarr))
+        axes[2].set_xscale('log')
+        # axes[2].set_yscale('symlog')
+        axes[2].set_xlabel('$r$/kpc')
+        axes[2].set_ylabel('$\mathrm{d} ln{v_c} /\mathrm{d} ln{r}$')
+
+def profiles( part, Tmask=True, rbins=np.power(10, np.arange(np.log10(0.005258639741921723), np.log10(3), 0.05)) ):
+    '''
+    Default Tmask and rbins chosen to match Stern+20 Fig. 6: `np.power(10, np.arange(np.log10(0.005258639741921723), np.log10(1.9597976388995666), 0.05))`
+   
+    `part` is output of `load_allparticles`; `part[ptype]` is snapshot dict for particle `pytpe` and must have `Masses` and `r_scaled` columns.
+    Input gas particle snapshot dict `part[0]` must have `r_scaled`, `Vi`, `posC`, and `Rvir` columns.
+    '''
+    p0 = part[0]
+    rmid = (rbins[:-1]+rbins[1:])/2 #in units of Rvir
+    logprofiles = { 'rho':[], 'T':[], 'Z':[], 'MachNumber':[], 'vrad':[], 'cs':[], 'tcool':[], 'nH':[], 'P_th':[], 'P_turb':[], 'e_CR':[], 'P_CR':[]}
+    Mbins = { f'TotalMass:PartType{ptype}':[] for ptype in part.keys() }
+
+    for r0,r1 in zip(rbins[:-1],rbins[1:]):
+        idx = np.flatnonzero(Tmask & inrange( p0['r_scaled'], (r0, r1) ))
+        V = np.sum(p0['Vi'][idx]) #volume of shell in physical kpc^3
+
+        # Density profile: log <rho/(Msun/pc^3)>
+        rhoavg = np.sum(p0['Masses'][idx]) / V
+        logprofiles['rho'].append(np.log10(rhoavg*10))
+
+        # Temperature profile (averaging in linear space): log <T/K>
+        Tavg = np.sum(p0['Temperature'][idx] * p0['Vi'][idx]) / V
+        logprofiles['T'].append(np.log10(Tavg))
+        
+        # Z/Zsun profile (averaging in linear space): log <Z/Zsun>
+        Zavg = np.sum(p0['Metallicity'][:,0][idx]/Zsun * p0['Vi'][idx]) / V
+        logprofiles['Z'].append(np.log10(Zavg))
+
+        # Mach number profile (averaging in linear space): <M>
+        MachNumberavg = np.sum(p0['MachNumber'][idx] * p0['Vi'][idx]) / V
+        logprofiles['MachNumber'].append(MachNumberavg)
+        
+        # Radial velocity profile (averaging in linear space): <vrad/(km/s)>
+        vradavg = np.sum(p0['vrad'][idx] * p0['Vi'][idx]) / V
+        logprofiles['vrad'].append(vradavg)
+        
+        # Sound speed profile (averaging in linear space): <cs/(km/s)>
+        csavg = np.sum(p0['SoundSpeed'][idx] * p0['Vi'][idx]) / V
+        logprofiles['cs'].append(csavg)
+        
+        # tcool profile (averaging in linear space): log <tcool/Gyr>
+        # filter out particles where tcool is infinite, keeping shell volume V the same
+        assert not np.any(p0['tcool']==np.inf)
+        '''idxcool = np.flatnonzero(Tmask & inrange( p0['r_scaled'], (r0, r1) ) & (p0['tcool']!=np.inf))
+        print(len(idxcool)/len(idx)*100)
+        tcoolavg = np.sum(p0['tcool'][idxcool] * p0['Vi'][idxcool]) / V
+        '''
+        tcoolavg = np.sum(p0['tcool'][idx] * p0['Vi'][idx]) / V
+        logprofiles['tcool'].append(np.log10(tcoolavg))   
+
+        # nH profile (averaging in linear space): log <nH/cm^-3>
+        nHavg = np.sum(p0['nH'][idx] * p0['Vi'][idx]) / V
+        logprofiles['nH'].append(np.log10(nHavg))
+        
+        # Thermal pressure profile (averaging in linear space): log <P_th/(k_B K/cm^3)>
+        P_thi = Pressure(p0['InternalEnergy'][idx], p0['Density'][idx], typeP='thermal')
+        Pthavg = np.sum(P_thi * p0['Vi'][idx]) / V
+        logprofiles['P_th'].append(np.log10(Pthavg))
+        
+        # Turbulent pressure profile: log <P_turb/(k_B K/cm^3)>
+        var = 1/3 * ( np.var(p0['vrad'][idx]) + np.var(p0['vtheta'][idx]) + np.var(p0['vphi'][idx]) )
+        Pturbavg = (rhoavg*un.Msun/un.pc**3 * var*(un.km/un.s)**2).to(cons.k_B * un.K / un.cm**3).value
+        logprofiles['P_turb'].append(np.log10(Pturbavg))
+
+        if 'CosmicRayEnergy' in p0:
+            # CR energy density profile: log <e_CR/(1e10 Msun/kpc^3 (km/s)^2)>
+            CReavg = np.sum(p0['CosmicRayEnergy'][idx]) / V
+            logprofiles['e_CR'].append(np.log10(CReavg))
+
+            # CR pressure profile (averaging in linear space): log <P_CR/(k_B K/cm^3)>
+            P_CRi = Pressure(u_CR(p0['CosmicRayEnergy'][idx], p0['Masses'][idx]), p0['Density'][idx], typeP='CR')
+            PCRavg = np.sum(P_CRi * p0['Vi'][idx]) / V
+            logprofiles['P_CR'].append(np.log10(PCRavg))
+
+        # Total mass in radial bin for each particle type: 1e10 Msun
+        for ptype, p_i in part.items():
+            idx_i = np.flatnonzero(inrange( p_i['r_scaled'], (r0, r1) ))
+            Mbin_i = np.sum(p_i['Masses'][idx_i])
+            Mbins[f'TotalMass:PartType{ptype}'].append(Mbin_i)
+        
+    logprofiles = {k:np.array(v) for k,v in logprofiles.items()}
+    resdict = {'rmid':rmid, **logprofiles, **Mbins, 'posC':p0['posC'], 'Rvir':p0['Rvir'], 'Mvir':p0['Mvir'], 'Redshift':p0['Redshift']}
+    
+    return resdict
+
+def make_Mdot_profile(vrad, r_mag, Masses, Rmin=1, Rmax=1500, Rmin_Mdotmean = 1e2, Tmask=True):
+            
+    ''' 
+    *** Units ***
+    vrad: pkm/s
+    r_mag: pkpc
+    Masses: 1e10 Msun
+    Rmin, Rmax, Rmin_Mdotmean: pkpc
+    '''
+
+    rbins = np.logspace(np.log10(Rmin), np.log10(Rmax), 100) #pkpc
+    rmid = (rbins[:-1]+rbins[1:])/2 #in units of pkpc
+
+    Mdot_profile = [] #in units of Msun/yr
+
+    for r0,r1 in zip(rbins[:-1],rbins[1:]):
+        dL = r1 - r0
+        idx = np.flatnonzero(Tmask & inrange( r_mag, (r0, r1) ))
+
+        # Mdot profile: Msun/yr
+        Mdot = np.sum(vrad[idx] * 1e10 * Masses[idx] / dL ) * (un.km / un.s * un.Msun / un.kpc).to(un.Msun / un.yr)
+        Mdot_profile.append(Mdot)
+
+    Mdot_avg = np.mean(np.array(Mdot_profile)[rmid>Rmin_Mdotmean])
+    return np.vstack((rmid, Mdot_profile)), Mdot_avg
+
+class Simulation:
+    def __init__(self, simdir, snapnum, ):
+        # Load data
+        keys_to_extract = {
+            0:['Coordinates', 'Masses', 'Density', 'Temperature', 'InternalEnergy', 'CosmicRayEnergy', 'Velocities', 'Metallicity', 'SoundSpeed', 'CoolingRate'],
+            1:['Coordinates', 'Masses', 'Velocities'],
+            2:['Coordinates', 'Masses', 'Velocities'],
+            4:['Coordinates', 'Masses', 'Velocities'],
+            5:['Coordinates', 'Masses', 'Velocities']
+        }
+
+        self.part = load_allparticles(simdir, snapnum, 
+                            particle_types=sorted(keys_to_extract.keys()), 
+                            keys_to_extract=keys_to_extract, 
+                            Rvir='find_Rvir_SO', loud=0)
+        # Shift gas velocities to COM, calculate Z(<Rvir), and add additional fields to self.part
+        part_calculations(self.part)
+        
+        # Calculate potential
+        Mr = calculateMr(self.part)
+        self.potential = Potential_FIRE(Mr)
+        self.potential.potential_test()
+
+        # Calculate profiles and Mdot profile
+        self.pro = profiles(self.part)
+        self.Mdot_profile, self.Mdot_avg = make_Mdot_profile(self.part[0]['vrad'], self.part[0]['r_scaled']*self.part[0]['Rvir'], self.part[0]['Masses'])
+        self.Mdot_avg = self.Mdot_avg*un.Msun/un.yr
+
+        # Define cooling function
+        self.cooling = Cool.Wiersma_Cooling(self.part[0]['Z2Zsun'], self.part[0]['Redshift'])
+
+        # Integrate cooling flow solution
+        self.integrate_cooling_flow()
+
+        # PrecipitationModel(self.part[0]['Redshift'], self.potential, self.part[0]['Z2Zsun'], self.pro, CF.mu)
+
+    def integrate_cooling_flow(self, R_max=None, R_circ=None, Mdot=None, T_low=None, T_high=None, max_step=0.1):
+        if R_max is None: R_max = 1.5*self.potential.Rvir
+        if R_circ is None: R_circ = self.potential.get_Rcirc()
+        if Mdot is None: Mdot = self.Mdot_avg
+        if T_low is None: T_low = 1e4*un.K
+        if T_high is None: T_high = 1e8*un.K
+        
+        self.stalled_solution = CF.shoot_from_R_circ(
+            self.potential,
+            self.cooling,
+            R_circ,
+            Mdot,
+            R_max,
+            max_step=max_step,
+            T_low=T_low,
+            T_high=T_high,
+            pr=True)
+
+# simdir = 'data/'
+# snapnum = 60
