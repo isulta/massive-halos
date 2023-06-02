@@ -8,7 +8,9 @@ profilelabels = {
     'P_CR':r'$\left< \log \left[ P_{CR} / \left(k_B \mathrm{K}/\mathrm{cm}^3\right) \right] \right>$',
     'T lin':r'$\log \left< T / \mathrm{K} \right>$',
     'P_th lin':r'$\log \left< P_{th} / \left(k_B \mathrm{K}/\mathrm{cm}^3\right) \right>$',
-    'P_CR lin':r'$\log \left< P_{CR} / \left(k_B \mathrm{K}/\mathrm{cm}^3\right) \right>$'
+    'P_CR lin':r'$\log \left< P_{CR} / \left(k_B \mathrm{K}/\mathrm{cm}^3\right) \right>$',
+    'nH lin':r'$\log \left< n_H / \mathrm{cm}^{-3} \right>$',
+    'Z lin':r'$\log \left< Z / Z_\odot \right>$'
 }
 
 import numpy as np
@@ -230,7 +232,7 @@ def load_p0(snapdir, snapnum, ahf_path=None, Rvir=None, loud=1, keys_to_extract=
 If `halo` and `snapnum` are defined, a plot of density vs. distance from halo center is saved.
 The virial mass (mass within a sphere of radius Rvir centered at posC) is also returned in units Msun.
 '''
-def find_Rvir_SO(part, posC=None, halo=None, snapnum=None):
+def find_Rvir_SO(part, posC=None, halo=None, snapnum=None, useM200c=False):
     if posC is None:
         posC = part[0]['posC']
 
@@ -259,7 +261,7 @@ def find_Rvir_SO(part, posC=None, halo=None, snapnum=None):
     r = r[idx]
     Volume = 4/3 * np.pi * r**3 # Volume in units (physical kpc)^3
 
-    Masses = np.cumsum(Masses) * 1.e10 # Total mass in units Msun within sphere of radius r
+    Masses = np.cumsum(Masses, dtype=np.float64) * 1.e10 # Total mass in units Msun within sphere of radius r
 
     with np.errstate(divide='ignore'): Density = Masses/Volume * 1.e9 # Density in units Msun/Mpc^3
 
@@ -267,7 +269,7 @@ def find_Rvir_SO(part, posC=None, halo=None, snapnum=None):
         OmegaM0, OmegaL0, hubble, z = part[0]['Omega0'], part[0]['OmegaLambda'], part[0]['HubbleParam'], part[0]['Redshift']
     else: #FIRE-3
         OmegaM0, OmegaL0, hubble, z = part[0]['Omega_Matter'], part[0]['Omega_Lambda'], part[0]['HubbleParam'], part[0]['Redshift']
-    rhovir = deltavir(OmegaM0, OmegaL0, z) * rhocritz(OmegaM0, OmegaL0, z) * hubble**2 # Virial density in units Msun/Mpc^3
+    rhovir = ( 200 if useM200c else deltavir(OmegaM0, OmegaL0, z) ) * rhocritz(OmegaM0, OmegaL0, z) * hubble**2 # Virial density in units Msun/Mpc^3
 
     if halo is not None:
         plt.plot(r, Density)
@@ -283,7 +285,10 @@ def find_Rvir_SO(part, posC=None, halo=None, snapnum=None):
     idx_vir = np.flatnonzero(Density <= rhovir)[0]
     return r[idx_vir], Masses[idx_vir] # return Rvir in units physical kpc, and Mvir in units Msun
     # simple linear interpolation with next closest point, and InterpolatedUnivariateSpline.roots() both seem to return approximately same Rvir as the 1 point method above.
-
+try:
+    cache = h5todict('/work2/08044/tg873432/frontera/HaloCenteringCache/fire3_mainsimulationset.h5')
+except:
+    cache = {}
 def load_allparticles(snapdir, snapnum, particle_types=[0,1,2,4,5], keys_to_extract={0:['Coordinates', 'Masses', 'Density', 'Temperature', 'InternalEnergy', 'CosmicRayEnergy'],1:['Coordinates', 'Masses'],2:['Coordinates', 'Masses'],4:['Coordinates', 'Masses'],5:['Coordinates', 'Masses']}, ptype_centering=1, Rvir=None, ahf_path=None, loud=1):
     '''Loads all particle data from simulation directory `snapdir` for a snapshot  `snapnum`, and returns dict of dicts for each particle type.
 
@@ -300,6 +305,7 @@ def load_allparticles(snapdir, snapnum, particle_types=[0,1,2,4,5], keys_to_extr
         `ahf_path`: directory with AHF file. If defined, `Rvir` will be read in with units physical kpc (this will overwrite any value passed for `Rvir`).
         `loud`: verbose output if `True`
     '''
+    snapdir_orig = snapdir
     snapdir = os.path.join(snapdir, 'output/') if os.path.exists(os.path.join(snapdir, 'output/')) else snapdir #some sims have snapshots in output/
 
     keys_to_extract = {**{ptype:None for ptype in particle_types}, **keys_to_extract} #load all keys for particle types for which keys were not given
@@ -311,8 +317,15 @@ def load_allparticles(snapdir, snapnum, particle_types=[0,1,2,4,5], keys_to_extr
     if loud:
         print(f"Loading redshift {part[particle_types[0]]['Redshift']}")
 
+    if os.path.basename(snapdir_orig) in cache and str(snapnum) in cache[os.path.basename(snapdir_orig)]:
+        posC = cache[os.path.basename(snapdir_orig)][str(snapnum)]['posC']
+        Rvir = cache[os.path.basename(snapdir_orig)][str(snapnum)]['Rvir']
+        Mvir = cache[os.path.basename(snapdir_orig)][str(snapnum)]['Mvir']
+    else:
+        posC = halo_center_wrapper(part[ptype_centering], shrinkpercent=2.5, minparticles=1000, initialradiusfactor=1)[0] #most accurate parameters
+        Rvir, Mvir = find_Rvir_SO(part, posC)
     # posC = halo_center_wrapper(part[ptype_centering])[0]
-    posC = halo_center_wrapper(part[ptype_centering], shrinkpercent=2.5, minparticles=1000, initialradiusfactor=1)[0] #most accurate parameters
+    ###posC = halo_center_wrapper(part[ptype_centering], shrinkpercent=2.5, minparticles=1000, initialradiusfactor=1)[0] #most accurate parameters
     # posC = halo_center_wrapper(part[ptype_centering], shrinkpercent=10, minparticles=1000, initialradiusfactor=1)[0] #pretty accurate parameters and 2x faster than shrinkpercent=2.5 (some minor problems, e.g. a small dip at z=6 for h29_noAGNfb)
 
     if Rvir == 'find_Rvir_SO': #Find Rvir and Mvir using SO method

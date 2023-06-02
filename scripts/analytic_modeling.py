@@ -82,6 +82,9 @@ def part_calculations(p, Rmax_Z=1, usetcoolWiersma=True):
 
     # Calculate mass-weighted average metallicity/Zsun within Rmax_Z*Rvir
     p[0]['Z2Zsun']  = np.sum((p[0]['Metallicity'][:,0] * p[0]['Masses'])[p[0]['r_scaled']<=Rmax_Z]) / np.sum(p[0]['Masses'][p[0]['r_scaled']<=Rmax_Z]) / Zsun
+    
+    # Calculate metallicity/Zsun
+    p[0]['MetallicitySolar'] = p[0]['Metallicity'][:,0]/Zsun
 
     # Calculate number density of hydrogen atoms
     XH = 1 - p[0]['Metallicity'][:,0] - p[0]['Metallicity'][:,1] #hydrogen mass fraction
@@ -90,7 +93,8 @@ def part_calculations(p, Rmax_Z=1, usetcoolWiersma=True):
 
     if usetcoolWiersma:
         # Calculate cooling time from predicted CoolingRate from cooling flow solutions code (Wiersma et al. 2009 cooling functions)
-        cooling = Cool.Wiersma_Cooling(p[0]['Z2Zsun'],p[0]['Redshift'])
+        with np.errstate(divide='ignore', invalid='ignore'):
+            cooling = Cool.Wiersma_Cooling(p[0]['Z2Zsun'],p[0]['Redshift'])
         CoolingRate_pred = cooling.LAMBDA(p[0]['Temperature']*un.K, p[0]['nH']*(un.cm**-3)) * (p[0]['nH']*(un.cm**-3))**2
         tcool_pred = ((Pressure(p[0]['InternalEnergy'], p[0]['Density'], typeP='thermal') * cons.k_B * un.K / un.cm**3) / ( CoolingRate_pred * (5/3-1) ))
         p[0]['tcool'] = tcool_pred.to(un.Gyr).value
@@ -126,13 +130,19 @@ class Potential_FIRE(CF.Potential):
         r = r.to(un.kpc).value
         return self.lnvc_interp(r)
     def get_Rcirc(self):
-        return minimize(lambda x: -self.vc(x*un.kpc), 1, method = 'Nelder-Mead').x[0] * un.kpc
-    def potential_test(self):
+        # TODO
+        # return minimize(lambda x: -self.vc(x*un.kpc), 1, method = 'Nelder-Mead').x[0] * un.kpc
+    
+        R_min = 0.1*un.kpc
+        R_max = 50*un.kpc
+        xarr = np.logspace(np.log10(R_min.to(un.kpc).value), np.log10(R_max.to(un.kpc).value), 100) * un.kpc
+        return xarr[np.argmax(self.vc(xarr))]
+    def potential_test(self, fig=None, axes=None):
         R_min = 0.1*un.kpc
         R_max = 1.5*self.Rvir  
         xarr = np.logspace(np.log10(R_min.to(un.kpc).value), np.log10(R_max.to(un.kpc).value), 100) * un.kpc
 
-        fig, axes = plt.subplots(1, 3, sharex=True, sharey=False, gridspec_kw={'wspace': .3, 'hspace':.04}, figsize=[4.8*3,4.8*1], dpi=150, facecolor='w')
+        if fig is None: fig, axes = plt.subplots(1, 3, sharex=True, sharey=False, gridspec_kw={'wspace': .3, 'hspace':.04}, figsize=[4.8*3,4.8*1], dpi=150, facecolor='w')
 
         axes[0].plot(xarr, self.Phi(xarr))
         axes[0].set_xscale('log')
@@ -264,43 +274,118 @@ def make_Mdot_profile(vrad, r_mag, Masses, Rmin=1, Rmax=1500, Rmin_Mdotmean = 1e
         Mdot_profile.append(Mdot)
 
     Mdot_avg = np.mean(np.array(Mdot_profile)[rmid>Rmin_Mdotmean])
-    return np.vstack((rmid, Mdot_profile)), Mdot_avg
+    return {'rmid_Mdot':rmid, 'Mdot':Mdot_profile}, Mdot_avg
+
+def colormap(p, k, krange, f=1, rrange=(0, 3), log=True, bins=100):
+    idx = inrange( p['r_scaled']*p['Rvir'], np.power(10, rrange) )
+    Mtest = f*p[k][idx]
+    if log: Mtest = np.log10(Mtest)
+    
+    rtest = np.log10(p['r_scaled'][idx]*p['Rvir'])
+    hrange = [[rtest.min(), rtest.max()],krange]
+    
+    H, xedges, yedges = np.histogram2d(rtest, Mtest, bins=bins, range=hrange, density=True, weights=p['Masses'][idx])
+    X, Y = np.meshgrid(xedges, yedges)
+    H = H.T
+    
+    for i in range(H.shape[1]):
+        H[:,i] = H[:,i] / np.sum(H[:,i])
+    
+    return {'X':X, 'Y':Y, 'H':H}
 
 class Simulation:
-    def __init__(self, simdir, snapnum, ):
-        # Load data
-        keys_to_extract = {
-            0:['Coordinates', 'Masses', 'Density', 'Temperature', 'InternalEnergy', 'CosmicRayEnergy', 'Velocities', 'Metallicity', 'SoundSpeed', 'CoolingRate'],
-            1:['Coordinates', 'Masses', 'Velocities'],
-            2:['Coordinates', 'Masses', 'Velocities'],
-            4:['Coordinates', 'Masses', 'Velocities'],
-            5:['Coordinates', 'Masses', 'Velocities']
-        }
-
-        self.part = load_allparticles(simdir, snapnum, 
-                            particle_types=sorted(keys_to_extract.keys()), 
-                            keys_to_extract=keys_to_extract, 
-                            Rvir='find_Rvir_SO', loud=0)
-        # Shift gas velocities to COM, calculate Z(<Rvir), and add additional fields to self.part
-        part_calculations(self.part)
+    def __init__(self, simdir, snapnum, cachesim=False):
+        self.simdir = simdir
+        self.snapnum = snapnum
+        self.simname = os.path.basename(simdir)
         
-        # Calculate potential
-        Mr = calculateMr(self.part)
-        self.potential = Potential_FIRE(Mr)
+        if cachesim:
+            # Load data
+            keys_to_extract = {
+                0:['Coordinates', 'Masses', 'Density', 
+                'Temperature', 'InternalEnergy', 'CosmicRayEnergy', 
+                'Velocities', 'Metallicity', 'SoundSpeed', 'CoolingRate', 'SmoothingLength'],
+                1:['Coordinates', 'Masses', 'Velocities'],
+                2:['Coordinates', 'Masses', 'Velocities'],
+                4:['Coordinates', 'Masses', 'Velocities'],
+                5:['Coordinates', 'Masses', 'Velocities']
+            }
+            # keys_to_extract={0:['Coordinates','Masses','Metallicity','SmoothingLength','Temperature']}
+
+            self.part = load_allparticles(simdir, snapnum, 
+                                particle_types=sorted(keys_to_extract.keys()), 
+                                keys_to_extract=keys_to_extract, 
+                                Rvir='None', loud=0) #find_Rvir_SO',
+            # Find 200c SO measurements
+            self.R200c, self.M200c = find_Rvir_SO(self.part, useM200c=True)
+            # Shift gas velocities to COM, calculate Z(<Rvir), and add additional fields to self.part
+            part_calculations(self.part)
+            self.Z2Zsun = self.part[0]['Z2Zsun']
+            self.Redshift = self.part[0]['Redshift']
+            self.tHubble = self.part[0]['tHubble'] #Gyr
+
+            # Calculate profiles and Mdot profile
+            with np.errstate(divide='ignore', invalid='ignore'):
+                self.pro = profiles(self.part)
+            self.Mdot_profile, self.Mdot_avg = make_Mdot_profile(self.part[0]['vrad'], self.part[0]['r_scaled']*self.part[0]['Rvir'], self.part[0]['Masses'])
+            self.Mdot_avg = self.Mdot_avg*un.Msun/un.yr
+            
+            # Calculate potential
+            self.Mr = calculateMr(self.part)
+            self.cacheeverything()
+        else:
+            res = h5todict(f'../data/simcache/simcache_{self.simname}_{self.snapnum}.h5')
+            self.Z2Zsun = res['Z2Zsun']
+            self.Redshift = res['Redshift']
+            self.tHubble = res['tHubble']
+            self.pro = res['pro']
+            self.Mdot_profile = res['Mdot_profile']
+            self.Mr = res['Mr']
+            self.R200c = res['R200c']
+            self.M200c = res['M200c']
+
+            self.cmap_nH = res['cmap_nH']
+            self.cmap_T = res['cmap_T']
+            self.cmap_Z = res['cmap_Z']
+            self.cmap_MachNumber = res['cmap_MachNumber']
+            self.cmap_tcool = res['cmap_tcool']
+
+            self.Mdot_avg = np.mean(self.Mdot_profile['Mdot'][self.Mdot_profile['rmid_Mdot']>1e2])
+            self.Mdot_avg = self.Mdot_avg*un.Msun/un.yr
+
+        return
+        self.potential = Potential_FIRE(self.Mr)
         self.potential.potential_test()
-
-        # Calculate profiles and Mdot profile
-        self.pro = profiles(self.part)
-        self.Mdot_profile, self.Mdot_avg = make_Mdot_profile(self.part[0]['vrad'], self.part[0]['r_scaled']*self.part[0]['Rvir'], self.part[0]['Masses'])
-        self.Mdot_avg = self.Mdot_avg*un.Msun/un.yr
-
-        # Define cooling function
-        self.cooling = Cool.Wiersma_Cooling(self.part[0]['Z2Zsun'], self.part[0]['Redshift'])
 
         # Integrate cooling flow solution
         self.integrate_cooling_flow()
 
         # PrecipitationModel(self.part[0]['Redshift'], self.potential, self.part[0]['Z2Zsun'], self.pro, CF.mu)
+
+    def cacheeverything(self):
+        colormaps = {
+            'cmap_nH':          colormap( self.part[0], 'nH', (-7,1) ),
+            'cmap_T':           colormap( self.part[0], 'Temperature', (5,9) ),
+            'cmap_Z':           colormap( self.part[0], 'MetallicitySolar', (-2.5,0) ),
+            'cmap_MachNumber':  colormap( self.part[0], 'MachNumber', (-1,1), log=False ),
+            'cmap_tcool':       colormap( self.part[0], 'tcool', (-2,4) )
+        }
+        res = {
+            'simdir':       self.simdir,
+            'snapnum':      self.snapnum,
+            'simname':      self.simname,
+            'Z2Zsun':       self.Z2Zsun,
+            'Redshift':     self.Redshift,
+            'tHubble':      self.tHubble,
+            'pro':          self.pro,
+            'Mdot_profile': self.Mdot_profile,
+            'Mr':           self.Mr,
+            'R200c':        self.R200c,
+            'M200c':        self.M200c,
+            **colormaps
+        }
+        fname = f'../data/simcache/simcache_{self.simname}_{self.snapnum}.h5'
+        dicttoh5(res, fname, mode='w')
 
     def integrate_cooling_flow(self, R_max=None, R_circ=None, Mdot=None, T_low=None, T_high=None, max_step=0.1):
         if R_max is None: R_max = 1.5*self.potential.Rvir
@@ -308,10 +393,13 @@ class Simulation:
         if Mdot is None: Mdot = self.Mdot_avg
         if T_low is None: T_low = 1e4*un.K
         if T_high is None: T_high = 1e8*un.K
+
+        # Define cooling function
+        cooling = Cool.Wiersma_Cooling(self.Z2Zsun, self.Redshift)
         
         self.stalled_solution = CF.shoot_from_R_circ(
             self.potential,
-            self.cooling,
+            cooling,
             R_circ,
             Mdot,
             R_max,
@@ -319,6 +407,3 @@ class Simulation:
             T_low=T_low,
             T_high=T_high,
             pr=True)
-
-# simdir = 'data/'
-# snapnum = 60
