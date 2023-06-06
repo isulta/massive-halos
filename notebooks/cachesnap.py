@@ -37,5 +37,14 @@ PaperSimNames = {'m12f_NoBH': 'm12f_m7e3_MHD_fire3_fireBH_Sep182021_hr_crdiffc69
 # d = sim_path_fire3(PaperSimNames['m12q_NoBH'])
 # Parallel(n_jobs=27, verbose=10)(delayed(Simulation)(d, snapnum, cachesim=True) for snapnum in range(290, 317))
 
-d = sim_path_fire3(PaperSimNames['m12q_BH'])
-Parallel(n_jobs=20, verbose=10)(delayed(Simulation)(d, snapnum, cachesim=True) for snapnum in range(290, 310))
+# d = sim_path_fire3(PaperSimNames['m12q_BH'])
+# Parallel(n_jobs=20, verbose=10)(delayed(Simulation)(d, snapnum, cachesim=True) for snapnum in range(290, 310))
+
+todo = []
+for k,v in PaperSimNames.items():
+    snaps = sorted([int(f.split('_')[-1].split('.')[0]) for f in os.listdir('../data/simcache') if v in f])
+    if snaps[-1]>100: 
+        for snap in list(set(np.arange(258, 304))- set(snaps)):
+            todo.append((v, snap))
+
+Parallel(n_jobs=-1, verbose=10)(delayed(Simulation)(sim_path_fire3(v), snapnum, cachesim=True) for (v, snapnum) in todo)
