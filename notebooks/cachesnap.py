@@ -48,3 +48,10 @@ for k,v in PaperSimNames.items():
             todo.append((v, snap))
 
 Parallel(n_jobs=-1, verbose=10)(delayed(Simulation)(sim_path_fire3(v), snapnum, cachesim=True) for (v, snapnum) in todo)
+
+'''#Quest
+d1 = '/projects/b1026/snapshots/fire3/m13h113_m3e4/m13h113_m3e4_MHD_fire3_fireBH_Sep182021_hr_crdiffc690_sdp1e-4_gacc31_fa0.5'
+d2 = '/projects/b1026/snapshots/fire3/m13h206_m3e4/m13h206_m3e4_MHD_fire3_fireBH_Sep182021_hr_crdiffc690_sdp3e-4_gacc31_fa0.5'
+todo = [(d1, snapnum) for snapnum in range(362, 372)] + [(d2, snapnum) for snapnum in range(330, 338)]
+Parallel(n_jobs=20, verbose=10)(delayed(Simulation)(d, snapnum, cachesim=True) for (d, snapnum) in todo)
+'''
