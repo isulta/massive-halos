@@ -286,7 +286,7 @@ def find_Rvir_SO(part, posC=None, halo=None, snapnum=None, useM200c=False):
     return r[idx_vir], Masses[idx_vir] # return Rvir in units physical kpc, and Mvir in units Msun
     # simple linear interpolation with next closest point, and InterpolatedUnivariateSpline.roots() both seem to return approximately same Rvir as the 1 point method above.
 try:
-    cache = h5todict('/work2/08044/tg873432/frontera/HaloCenteringCache/fire3_mainsimulationset.h5')
+    cache = h5todict(os.path.expanduser('~/fire3_mainsimulationset.h5'))
 except:
     cache = {}
 def load_allparticles(snapdir, snapnum, particle_types=[0,1,2,4,5], keys_to_extract={0:['Coordinates', 'Masses', 'Density', 'Temperature', 'InternalEnergy', 'CosmicRayEnergy'],1:['Coordinates', 'Masses'],2:['Coordinates', 'Masses'],4:['Coordinates', 'Masses'],5:['Coordinates', 'Masses']}, ptype_centering=1, Rvir=None, ahf_path=None, loud=1):
