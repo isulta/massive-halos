@@ -353,15 +353,16 @@ class Simulation:
             self.Mr = calculateMr(self.part)
             self.cacheeverything()
         else:
-            res = h5todict(f'../data/simcache/simcache_{self.simname}_{self.snapnum}.h5')
+            res = h5todict(f'../data/simcachev2/simcache_{self.simname}_{self.snapnum}.h5')
             self.Z2Zsun = res['Z2Zsun']
             self.Redshift = res['Redshift']
             self.tHubble = res['tHubble']
             self.pro = res['pro']
             self.Mdot_profile = res['Mdot_profile']
             self.Mr = res['Mr']
-            self.R200c = res['R200c']
-            self.M200c = res['M200c']
+            if find200c:
+                self.R200c = res['R200c']
+                self.M200c = res['M200c']
 
             self.cmap_nH = res['cmap_nH']
             self.cmap_T = res['cmap_T']
@@ -406,11 +407,11 @@ class Simulation:
             'pro':          self.pro,
             'Mdot_profile': self.Mdot_profile,
             'Mr':           self.Mr,
-            'R200c':        self.R200c,
-            'M200c':        self.M200c,
+            #'R200c':        self.R200c,
+            #'M200c':        self.M200c,
             **colormaps
         }
-        fname = f'../data/simcache/simcache_{self.simname}_{self.snapnum}.h5'
+        fname = f'../data/simcachev2/simcache_{self.simname}_{self.snapnum}.h5'
         dicttoh5(res, fname, mode='w')
 
     def binary_search_R_sonic(self, R_sonic_low, R_sonic_high, R_max=1.5, R_min=1, tol=1e-1, verbose=True):
