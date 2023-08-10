@@ -21,7 +21,7 @@ import matplotlib.colors
 # %matplotlib inline
 plt.rcParams['figure.dpi'] = 110
 
-Zsun = 0.02
+Zsun = 0.0142 #Asplund+09
 
 def spherical_velocities(v, r):
     '''Given velocity v and position r cartesian arrays, calculates vrad, vtheta, vphi (each in same units as v).
@@ -69,7 +69,7 @@ def velocity_COM(p, Rmax=1):
     return velC
    
 
-def part_calculations(p, Rmax_Z=1, usetcoolWiersma=True):
+def part_calculations(p, Rmax_Z=1, usetcoolWiersma=False, usetcoolWiersma_Zbins=True, Zbins=1000):
     '''Calculate additional fields and add them to particle data dict.'''
     # Shift velocity relative to COM's (r/Rvir<1) velocity
     p[0]['Velocities'] -= velocity_COM(p)
@@ -92,12 +92,22 @@ def part_calculations(p, Rmax_Z=1, usetcoolWiersma=True):
     p[0]['nH'] = nH.to(un.cm**-3).value
 
     if usetcoolWiersma:
-        # Calculate cooling time from predicted CoolingRate from cooling flow solutions code (Wiersma et al. 2009 cooling functions)
+        # Calculate cooling time from predicted CoolingRate from cooling flow solutions code (Wiersma et al. 2009 cooling function with Z=mass-weighted avg. Z in halo)
         with np.errstate(divide='ignore', invalid='ignore'):
             cooling = Cool.Wiersma_Cooling(p[0]['Z2Zsun'],p[0]['Redshift'])
         CoolingRate_pred = cooling.LAMBDA(p[0]['Temperature']*un.K, p[0]['nH']*(un.cm**-3)) * (p[0]['nH']*(un.cm**-3))**2
         tcool_pred = ((Pressure(p[0]['InternalEnergy'], p[0]['Density'], typeP='thermal') * cons.k_B * un.K / un.cm**3) / ( CoolingRate_pred * (5/3-1) ))
         p[0]['tcool'] = tcool_pred.to(un.Gyr).value
+    elif usetcoolWiersma_Zbins:
+        # Calculate cooling time from predicted CoolingRate from cooling flow solutions code (Wiersma et al. 2009 cooling function with Z=mean Z in `Zbins` Z bins)
+        Zidxsplit = np.array_split( np.argsort(p[0]['Metallicity'][:,0]/Zsun), Zbins )
+        p[0]['tcool'] = np.zeros_like(p[0]['nH'])
+        for Zidx in Zidxsplit:
+            Z2Zsun = np.mean(p[0]['Metallicity'][Zidx,0]) / Zsun
+            cooling = Cool.Wiersma_Cooling(Z2Zsun, p[0]['Redshift'])
+            CoolingRate_pred = cooling.LAMBDA(p[0]['Temperature'][Zidx]*un.K, p[0]['nH'][Zidx]*(un.cm**-3)) * (p[0]['nH'][Zidx]*(un.cm**-3))**2
+            tcool_pred = ((Pressure(p[0]['InternalEnergy'][Zidx], p[0]['Density'][Zidx], typeP='thermal') * cons.k_B * un.K / un.cm**3) / ( CoolingRate_pred * (5/3-1) ))
+            p[0]['tcool'][Zidx] = tcool_pred.to(un.Gyr).value
     else:
         # Calculate tcool from 'CoolingRate'='InternalEnergy'/tcool where tcool is in code units
         p[0]['tcool'] = 1/p[0]['CoolingRate'] * p[0]['InternalEnergy']*(p[0]['HubbleParam']**-1 * un.kpc / (un.km/un.s)).to(un.Gyr).value#0.978
@@ -174,7 +184,7 @@ def profiles( part, Tmask=True, rbins=np.power(10, np.arange(np.log10(0.00525863
     '''
     p0 = part[0]
     rmid = (rbins[:-1]+rbins[1:])/2 #in units of Rvir
-    logprofiles = { 'rho':[], 'T':[], 'Z':[], 'MachNumber':[], 'vrad':[], 'cs':[], 'tcool':[], 'nH':[], 'P_th':[], 'P_turb':[], 'e_CR':[], 'P_CR':[]}
+    logprofiles = { k:[] for k in ['rho', 'T', 'Z', 'MachNumber', 'vrad', 'cs', 'tcool', 'nH', 'P_th', 'P_turb', 'e_CR', 'P_CR', 'K', 'K_Mweighted', 'Z_Mweighted'] }
     Mbins = { f'TotalMass:PartType{ptype}':[] for ptype in part.keys() }
 
     for r0,r1 in zip(rbins[:-1],rbins[1:]):
@@ -192,6 +202,8 @@ def profiles( part, Tmask=True, rbins=np.power(10, np.arange(np.log10(0.00525863
         # Z/Zsun profile (averaging in linear space): log <Z/Zsun>
         Zavg = np.sum(p0['Metallicity'][:,0][idx]/Zsun * p0['Vi'][idx]) / V
         logprofiles['Z'].append(np.log10(Zavg))
+        Zavg_Mweighted = np.sum(p0['Metallicity'][:,0][idx]/Zsun * p0['Masses'][idx]) / np.sum(p0['Masses'][idx])
+        logprofiles['Z_Mweighted'].append(np.log10(Zavg_Mweighted))
 
         # Mach number profile (averaging in linear space): <M>
         MachNumberavg = np.sum(p0['MachNumber'][idx] * p0['Vi'][idx]) / V
@@ -223,6 +235,13 @@ def profiles( part, Tmask=True, rbins=np.power(10, np.arange(np.log10(0.00525863
         P_thi = Pressure(p0['InternalEnergy'][idx], p0['Density'][idx], typeP='thermal')
         Pthavg = np.sum(P_thi * p0['Vi'][idx]) / V
         logprofiles['P_th'].append(np.log10(Pthavg))
+        
+        # Entropy profile (averaging in linear space): log <K/(k_B K/cm^3/(1e10 Msun/kpc^3))>
+        Ki = P_thi / p0['Density'][idx]**(5/3)
+        Kavg = np.sum(Ki * p0['Vi'][idx]) / V
+        Kavg_Mweighted = np.sum(Ki * p0['Masses'][idx]) / np.sum(p0['Masses'][idx])
+        logprofiles['K'].append(np.log10(Kavg))
+        logprofiles['K_Mweighted'].append(np.log10(Kavg_Mweighted))
         
         # Turbulent pressure profile: log <P_turb/(k_B K/cm^3)>
         var = 1/3 * ( np.var(p0['vrad'][idx]) + np.var(p0['vtheta'][idx]) + np.var(p0['vphi'][idx]) )
@@ -294,7 +313,7 @@ def colormap(p, k, krange, f=1, rrange=(0, 3), log=True, bins=100):
     return {'X':X, 'Y':Y, 'H':H}
 
 class Simulation:
-    def __init__(self, simdir, snapnum, cachesim=False):
+    def __init__(self, simdir, snapnum, cachesim=False, find200c=False):
         self.simdir = simdir
         self.snapnum = snapnum
         self.simname = os.path.basename(simdir)
@@ -317,7 +336,7 @@ class Simulation:
                                 keys_to_extract=keys_to_extract, 
                                 Rvir='None', loud=0) #find_Rvir_SO',
             # Find 200c SO measurements
-            self.R200c, self.M200c = find_Rvir_SO(self.part, useM200c=True)
+            if find200c: self.R200c, self.M200c = find_Rvir_SO(self.part, useM200c=True)
             # Shift gas velocities to COM, calculate Z(<Rvir), and add additional fields to self.part
             part_calculations(self.part)
             self.Z2Zsun = self.part[0]['Z2Zsun']
@@ -350,8 +369,15 @@ class Simulation:
             self.cmap_MachNumber = res['cmap_MachNumber']
             self.cmap_tcool = res['cmap_tcool']
 
-            self.Mdot_avg = np.mean(self.Mdot_profile['Mdot'][self.Mdot_profile['rmid_Mdot']>1e2])
-            self.Mdot_avg = self.Mdot_avg*un.Msun/un.yr
+            try:
+                self.Rcool = self.pro['rmid'][np.flatnonzero(self.pro['tcool'] > np.log10(self.tHubble))][0] * self.pro['Rvir'] #cooling radius in units pkpc
+            except:
+                self.Rcool = 1500
+                print(self.simname, 'Rcool not defined, set to 1500')
+            Rmin = 0.1 * self.pro['Rvir'] #minimum radius for Mdot, Z avg in units pkpc
+            self.Mdot_avg = np.mean(self.Mdot_profile['Mdot'][(Rmin < self.Mdot_profile['rmid_Mdot'])&(self.Mdot_profile['rmid_Mdot'] < self.Rcool)])*un.Msun/un.yr
+            # self.Mdot_avg = np.mean(self.Mdot_profile['Mdot'][self.Mdot_profile['rmid_Mdot']>1e2])
+            # self.Mdot_avg = self.Mdot_avg*un.Msun/un.yr
 
         return
         self.potential = Potential_FIRE(self.Mr)
@@ -387,6 +413,55 @@ class Simulation:
         fname = f'../data/simcache/simcache_{self.simname}_{self.snapnum}.h5'
         dicttoh5(res, fname, mode='w')
 
+    def binary_search_R_sonic(self, R_sonic_low, R_sonic_high, R_max=1.5, R_min=1, tol=1e-1, verbose=True):
+        cooling = Cool.Wiersma_Cooling(self.Z2Zsun, self.Redshift)
+        R_sonic_mid = (R_sonic_low + R_sonic_high)/2
+        
+        def solution(R_sonic):
+            return CF.shoot_from_sonic_point(self.potential, cooling, R_sonic=R_sonic, R_max=R_max*self.potential.Rvir, R_min=R_min*un.kpc)
+        
+        def error(solution):
+            return np.abs(self.Mdot_avg - solution.Mdot).value
+        
+        if verbose: print(self.Mdot_avg)
+        if verbose: print(R_sonic_low)
+        solution_low = solution(R_sonic_low)
+        if verbose: print(solution_low.Mdot)
+        
+        if verbose: print(R_sonic_mid)
+        solution_mid = solution(R_sonic_mid)
+        if verbose: print(solution_mid.Mdot)
+        
+        if verbose: print(R_sonic_high)
+        solution_high = solution(R_sonic_high)
+        if verbose: print(solution_high.Mdot)
+        
+        error_low = error(self, solution_low)
+        error_mid = error(self, solution_mid)
+        error_high = error(self, solution_high)
+        
+        Mdot_monotonically_increasing = solution_high.Mdot > solution_low.Mdot
+        
+        assert (Mdot_monotonically_increasing and solution_low.Mdot < self.Mdot_avg and self.Mdot_avg < solution_high.Mdot) or\
+        (not Mdot_monotonically_increasing and solution_low.Mdot > self.Mdot_avg and self.Mdot_avg > solution_high.Mdot)
+        
+        while error_mid > tol:
+            if ((solution_mid.Mdot > self.Mdot_avg) and Mdot_monotonically_increasing) or ((solution_mid.Mdot < self.Mdot_avg) and not Mdot_monotonically_increasing):
+                R_sonic_high = R_sonic_mid
+                solution_high = solution_mid
+                error_high = error_mid
+            else:
+                R_sonic_low = R_sonic_mid
+                solution_low = solution_mid
+                error_low = error_mid
+            
+            R_sonic_mid = (R_sonic_low + R_sonic_high)/2
+            solution_mid = solution(R_sonic_mid)
+            error_mid = error(self, solution_mid)
+            if verbose: print(R_sonic_mid, error_mid, solution_mid.Mdot)
+
+        return solution_mid, R_sonic_mid
+    
     def integrate_cooling_flow(self, R_max=None, R_circ=None, Mdot=None, T_low=None, T_high=None, max_step=0.1):
         if R_max is None: R_max = 1.5*self.potential.Rvir
         if R_circ is None: R_circ = self.potential.get_Rcirc()
