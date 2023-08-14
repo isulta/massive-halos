@@ -345,7 +345,7 @@ class Simulation:
 
             # Calculate profiles and Mdot profile
             mask = True
-            if satellitecut: mask = (self.part[0]['nH'] > 1e-2)&(self.part[0]['Temperature'] < 1e5)
+            if satellitecut: mask = np.logical_not( (self.part[0]['nH'] > 1e-2)&(self.part[0]['Temperature'] < 1e5) )
             with np.errstate(divide='ignore', invalid='ignore'):
                 self.pro = profiles(self.part, Tmask=mask)
             self.Mdot_profile, self.Mdot_avg = make_Mdot_profile(self.part[0]['vrad'], self.part[0]['r_scaled']*self.part[0]['Rvir'], self.part[0]['Masses'])
