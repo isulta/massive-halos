@@ -345,7 +345,8 @@ class Simulation:
 
             # Calculate profiles and Mdot profile
             mask = True
-            if satellitecut: mask = np.logical_not( (self.part[0]['nH'] > 1e-2)&(self.part[0]['Temperature'] < 1e5) )
+            # if satellitecut: mask = np.logical_not( (self.part[0]['nH'] > 1e-2)&(self.part[0]['Temperature'] < 1e5) )
+            if satellitecut: mask = np.logical_not( (self.part[0]['Temperature'] < 1e5) )
             with np.errstate(divide='ignore', invalid='ignore'):
                 self.pro = profiles(self.part, Tmask=mask)
             self.Mdot_profile, self.Mdot_avg = make_Mdot_profile(self.part[0]['vrad'], self.part[0]['r_scaled']*self.part[0]['Rvir'], self.part[0]['Masses'])
@@ -355,7 +356,7 @@ class Simulation:
             self.Mr = calculateMr(self.part)
             self.cacheeverything()
         else:
-            res = h5todict(f'../data/simcachev2_satcut/simcache_{self.simname}_{self.snapnum}.h5')
+            res = h5todict(f'../data/simcachev2_Tcut/simcache_{self.simname}_{self.snapnum}.h5')
             self.Z2Zsun = res['Z2Zsun']
             self.Redshift = res['Redshift']
             self.tHubble = res['tHubble']
@@ -413,7 +414,7 @@ class Simulation:
             #'M200c':        self.M200c,
             **colormaps
         }
-        fname = f'../data/simcachev2_satcut/simcache_{self.simname}_{self.snapnum}.h5'
+        fname = f'../data/simcachev2_Tcut/simcache_{self.simname}_{self.snapnum}.h5'
         dicttoh5(res, fname, mode='w')
 
     def binary_search_R_sonic(self, R_sonic_low, R_sonic_high, R_max=1.5, R_min=1, tol=1e-1, verbose=True):

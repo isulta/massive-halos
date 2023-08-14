@@ -10,6 +10,7 @@
 #SBATCH -o slurm.%N.%j.out # STDOUT
 #SBATCH -e slurm.%N.%j.err # STDERR
 #SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH --mail-user=imransultan2025@u.northwestern.edu
 
 module purge
 
