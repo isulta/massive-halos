@@ -115,6 +115,9 @@ def part_calculations(p, Rmax_Z=1, usetcoolWiersma=False, usetcoolWiersma_Zbins=
     # Calculate Hubble time
     p[0]['tHubble'] = (1/(100 * p[0]['HubbleParam'] * (un.km/un.s/un.Mpc))).to(un.Gyr)
 
+    # Calculate entropy: K/(k_B K/cm^3/(1e10 Msun/kpc^3))
+    p[0]['K'] = Pressure(p[0]['InternalEnergy'], p[0]['Density'], typeP='thermal') / p[0]['Density']**(5/3)
+
 class Potential_FIRE(CF.Potential):
     def __init__(self, Mr, Rmax=3):
         self.Rvir = Mr['Rvir'][()]*un.kpc
@@ -356,7 +359,7 @@ class Simulation:
             self.Mr = calculateMr(self.part)
             self.cacheeverything()
         else:
-            res = h5todict(f'../data/simcachev2/simcache_{self.simname}_{self.snapnum}.h5')
+            res = h5todict(f'../data/simcachev2_Khist/simcache_{self.simname}_{self.snapnum}.h5')
             self.Z2Zsun = res['Z2Zsun']
             self.Redshift = res['Redshift']
             self.tHubble = res['tHubble']
@@ -372,6 +375,7 @@ class Simulation:
             self.cmap_Z = res['cmap_Z']
             self.cmap_MachNumber = res['cmap_MachNumber']
             self.cmap_tcool = res['cmap_tcool']
+            self.cmap_K = res['cmap_K']
 
             try:
                 self.Rcool = self.pro['rmid'][np.flatnonzero(self.pro['tcool'] > np.log10(self.tHubble))][0] * self.pro['Rvir'] #cooling radius in units pkpc
@@ -402,7 +406,8 @@ class Simulation:
             'cmap_T':           colormap( self.part[0], 'Temperature', (5,9) ),
             'cmap_Z':           colormap( self.part[0], 'MetallicitySolar', (-2.5,0) ),
             'cmap_MachNumber':  colormap( self.part[0], 'MachNumber', (-1,1), log=False ),
-            'cmap_tcool':       colormap( self.part[0], 'tcool', (-2,4) )
+            'cmap_tcool':       colormap( self.part[0], 'tcool', (-2,4) ),
+            'cmap_K':           colormap( self.part[0], 'K', (12,16) )
         }
         res = {
             'simdir':       self.simdir,
@@ -418,7 +423,7 @@ class Simulation:
             #'M200c':        self.M200c,
             **colormaps
         }
-        fname = f'../data/simcachev2/simcache_{self.simname}_{self.snapnum}.h5'
+        fname = f'../data/simcachev2_Khist/simcache_{self.simname}_{self.snapnum}.h5'
         dicttoh5(res, fname, mode='w')
 
     def binary_search_R_sonic(self, R_sonic_low, R_sonic_high, R_max=1.5, R_min=1, tol=1e-1, verbose=True):
