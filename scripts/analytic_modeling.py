@@ -356,7 +356,7 @@ class Simulation:
             self.Mr = calculateMr(self.part)
             self.cacheeverything()
         else:
-            res = h5todict(f'../data/simcachev2_Tcut/simcache_{self.simname}_{self.snapnum}.h5')
+            res = h5todict(f'../data/simcachev2/simcache_{self.simname}_{self.snapnum}.h5')
             self.Z2Zsun = res['Z2Zsun']
             self.Redshift = res['Redshift']
             self.tHubble = res['tHubble']
@@ -383,8 +383,12 @@ class Simulation:
             # self.Mdot_avg = np.mean(self.Mdot_profile['Mdot'][self.Mdot_profile['rmid_Mdot']>1e2])
             # self.Mdot_avg = self.Mdot_avg*un.Msun/un.yr
 
-        return
+            idxZavg= (Rmin < self.pro['rmid']*self.pro['Rvir'])&(self.pro['rmid']*self.pro['Rvir'] < self.Rcool)
+            self.Z2ZsunRvir = self.Z2Zsun
+            self.Z2Zsun = np.sum(10**self.pro['Z_Mweighted'][idxZavg] * self.pro['TotalMass:PartType0'][idxZavg]) / np.sum(self.pro['TotalMass:PartType0'][idxZavg])
+        
         self.potential = Potential_FIRE(self.Mr)
+        return
         self.potential.potential_test()
 
         # Integrate cooling flow solution
@@ -414,7 +418,7 @@ class Simulation:
             #'M200c':        self.M200c,
             **colormaps
         }
-        fname = f'../data/simcachev2_Tcut/simcache_{self.simname}_{self.snapnum}.h5'
+        fname = f'../data/simcachev2/simcache_{self.simname}_{self.snapnum}.h5'
         dicttoh5(res, fname, mode='w')
 
     def binary_search_R_sonic(self, R_sonic_low, R_sonic_high, R_max=1.5, R_min=1, tol=1e-1, verbose=True):
@@ -440,9 +444,9 @@ class Simulation:
         solution_high = solution(R_sonic_high)
         if verbose: print(solution_high.Mdot)
         
-        error_low = error(self, solution_low)
-        error_mid = error(self, solution_mid)
-        error_high = error(self, solution_high)
+        error_low = error(solution_low)
+        error_mid = error(solution_mid)
+        error_high = error(solution_high)
         
         Mdot_monotonically_increasing = solution_high.Mdot > solution_low.Mdot
         
@@ -461,7 +465,7 @@ class Simulation:
             
             R_sonic_mid = (R_sonic_low + R_sonic_high)/2
             solution_mid = solution(R_sonic_mid)
-            error_mid = error(self, solution_mid)
+            error_mid = error(solution_mid)
             if verbose: print(R_sonic_mid, error_mid, solution_mid.Mdot)
 
         return solution_mid, R_sonic_mid
