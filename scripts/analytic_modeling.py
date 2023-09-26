@@ -398,7 +398,7 @@ class Simulation:
             self.Z2ZsunRvir = self.Z2Zsun
             self.Z2Zsun = np.sum(10**self.pro['Z_Mweighted'][idxZavg] * self.pro['TotalMass:PartType0'][idxZavg]) / np.sum(self.pro['TotalMass:PartType0'][idxZavg])
         
-        self.potential = Potential_FIRE(self.Mr)
+            self.potential = Potential_FIRE(self.Mr)
         return
         self.potential.potential_test()
 
