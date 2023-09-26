@@ -72,12 +72,15 @@ def velocity_COM(p, Rmax=1):
 def part_calculations(p, Rmax_Z=1, usetcoolWiersma=False, usetcoolWiersma_Zbins=True, Zbins=1000):
     '''Calculate additional fields and add them to particle data dict.'''
     # Shift velocity relative to COM's (r/Rvir<1) velocity
-    p[0]['Velocities'] -= velocity_COM(p)
+    velC = velocity_COM(p)
+    for i in p.keys(): p[i]['Velocities'] -= velC
 
     # Calculate spherical velocites
     p[0]['vrad'], p[0]['vtheta'], p[0]['vphi'] = spherical_velocities(v=p[0]['Velocities'], r=p[0]['Coordinates'] - p[0]['posC'])
 
     # Calculate MachNumber
+    gamma = 5/3
+    if 'SoundSpeed' not in p[0]: p[0]['SoundSpeed'] = np.sqrt( gamma*(gamma-1) * p[0]['InternalEnergy'] ) #pkm/s
     p[0]['MachNumber'] = p[0]['vrad'] / p[0]['SoundSpeed']
 
     # Calculate mass-weighted average metallicity/Zsun within Rmax_Z*Rvir
@@ -177,6 +180,8 @@ class Potential_FIRE(CF.Potential):
         # axes[2].set_yscale('symlog')
         axes[2].set_xlabel('$r$/kpc')
         axes[2].set_ylabel('$\mathrm{d} ln{v_c} /\mathrm{d} ln{r}$')
+    def vesc(self, r):
+        return ( -2*self.Phi(r) )**0.5 #see Pandya+21
 
 def profiles( part, Tmask=True, rbins=np.power(10, np.arange(np.log10(0.005258639741921723), np.log10(3), 0.05)) ):
     '''
@@ -316,7 +321,7 @@ def colormap(p, k, krange, f=1, rrange=(0, 3), log=True, bins=100):
     return {'X':X, 'Y':Y, 'H':H}
 
 class Simulation:
-    def __init__(self, simdir, snapnum, cachesim=False, find200c=False, satellitecut=False):
+    def __init__(self, simdir, snapnum, cachesim=False, find200c=False, satellitecut=False, calculateOutflows=False):
         self.simdir = simdir
         self.snapnum = snapnum
         self.simname = os.path.basename(simdir)
@@ -357,9 +362,11 @@ class Simulation:
             
             # Calculate potential
             self.Mr = calculateMr(self.part)
+
+            if calculateOutflows: self.Mdot_profile['Mdot_outflows'] = self.outflow_rates()
             self.cacheeverything()
         else:
-            res = h5todict(f'../data/simcachev2_Khist/simcache_{self.simname}_{self.snapnum}.h5')
+            res = h5todict(f'../data/simcachev2_Khist_outflow/simcache_{self.simname}_{self.snapnum}.h5')
             self.Z2Zsun = res['Z2Zsun']
             self.Redshift = res['Redshift']
             self.tHubble = res['tHubble']
@@ -423,8 +430,53 @@ class Simulation:
             #'M200c':        self.M200c,
             **colormaps
         }
-        fname = f'../data/simcachev2_Khist/simcache_{self.simname}_{self.snapnum}.h5'
+        fname = f'../data/simcachev2_Khist_outflow/simcache_{self.simname}_{self.snapnum}.h5'
         dicttoh5(res, fname, mode='w')
+    
+    def outflow_rates(self, r0=0.2, r1=0.3): 
+        ''' 
+        *** Units ***
+        vrad: pkm/s
+        r_mag: pkpc
+        Masses: Msun
+        Rmin, Rmax, Rmin_Mdotmean: pkpc
+        '''
+        vrad = -self.part[0]['vrad'] #positive for outflows
+        r_mag = self.part[0]['r_scaled']*self.part[0]['Rvir']
+        Masses = self.part[0]['Masses'] * 1e10
+
+        # Get velocity dispersion of all particles within r/Rvir<1 (all particle velocities should already be adjusted for COM)
+        # pall = {}
+        # pall['Velocities'] = np.concatenate([self.part[k]['Velocities'] for k in self.part.keys()])
+        # pall['r_scaled'] = np.concatenate([self.part[k]['r_scaled'] for k in self.part.keys()])
+        # sigmav1d = np.linalg.norm(np.std( pall['Velocities'][pall['r_scaled']<1], axis=0 )) / 3**1/2 #pkm/s
+        sigmav1d = np.linalg.norm(np.std( self.part[1]['Velocities'][self.part[1]['r_scaled']<1], axis=0 )) / 3**1/2 #pkm/s only use HRDM
+        print('sigmav1d',sigmav1d)
+
+        idx_r = inrange( self.part[0]['r_scaled'], (r0, r1) ) #net flow rate
+        idx_vcut0 = idx_r & (vrad>0) #only select outflowing particles (Muratov+15)
+        idx_vcutsigma = idx_r & (vrad>sigmav1d) #only select outflowing particles with v above 1D velocity dispersion of the halo (Muratov+15)
+        
+        # Pandya+21 inflow rate (ISM boundary shell)
+        r0, r1 = 0.1, 0.2
+        dL = (r1-r0)*self.part[0]['Rvir'] #pkpc
+        r2 = 0.5 * self.part[0]['Rvir']*un.kpc #pkpc
+        idx = inrange( self.part[0]['r_scaled'], (r0, r1) ) & (vrad>0)
+        
+        self.potential = Potential_FIRE(self.Mr)
+        vsec_r2 = self.potential.vesc(r2)
+
+        vB2 = 1/2*vrad[idx]**2 *(un.km/un.s)**2 + self.part[0]['SoundSpeed'][idx]**2/(5/3-1) *(un.km/un.s)**2 - (1/2*self.potential.vesc(r_mag[idx]*un.kpc)**2)
+
+        idx_pandya = np.flatnonzero(idx)[vB2 > (-1/2*vsec_r2**2)]
+
+        Mdot_outflows = []
+        dL = (r1-r0)*self.part[0]['Rvir'] #pkpc
+        for idx in (idx_r, idx_vcut0, idx_vcutsigma, idx_pandya):
+            # Mdot profile: Msun/yr
+            Mdot = np.sum(vrad[idx] * Masses[idx] / dL ) * (un.km / un.s * un.Msun / un.kpc).to(un.Msun / un.yr)
+            Mdot_outflows.append(Mdot)
+        return Mdot_outflows
 
     def binary_search_R_sonic(self, R_sonic_low, R_sonic_high, R_max=1.5, R_min=1, tol=1e-1, verbose=True):
         cooling = Cool.Wiersma_Cooling(self.Z2Zsun, self.Redshift)
@@ -440,6 +492,8 @@ class Simulation:
         if verbose: print(R_sonic_low)
         solution_low = solution(R_sonic_low)
         if verbose: print(solution_low.Mdot)
+
+        if R_sonic_low==R_sonic_high: return solution_low, R_sonic_low
         
         if verbose: print(R_sonic_mid)
         solution_mid = solution(R_sonic_mid)
