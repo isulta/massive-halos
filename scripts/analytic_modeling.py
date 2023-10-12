@@ -366,7 +366,7 @@ class Simulation:
             if calculateOutflows: self.Mdot_profile['Mdot_outflows'] = self.outflow_rates()
             self.cacheeverything()
         else:
-            res = h5todict(f'../data/simcachev2_Khist_outflow/simcache_{self.simname}_{self.snapnum}.h5')
+            res = h5todict(f'../data/simcachev2_Khist_outflow_Tcut/simcache_{self.simname}_{self.snapnum}.h5')
             self.Z2Zsun = res['Z2Zsun']
             self.Redshift = res['Redshift']
             self.tHubble = res['tHubble']
@@ -430,7 +430,7 @@ class Simulation:
             #'M200c':        self.M200c,
             **colormaps
         }
-        fname = f'../data/simcachev2_Khist_outflow/simcache_{self.simname}_{self.snapnum}.h5'
+        fname = f'../data/simcachev2_Khist_outflow_Tcut/simcache_{self.simname}_{self.snapnum}.h5'
         dicttoh5(res, fname, mode='w')
     
     def outflow_rates(self, r0=0.2, r1=0.3): 
