@@ -5,3 +5,5 @@ slurm.*
 myjob.*
 .vscode/
 data/vtk*
+data/archive
+data/
