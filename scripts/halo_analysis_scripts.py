@@ -1,4 +1,4 @@
-COLOR_SCHEME = ['#2402ba','#b400e0','#98c1d9','#ff0000','#292800','#ff9b71']
+COLOR_SCHEME = ['#2402ba','#b400e0','#98c1d9','#ff0000','#292800','#ff9b71', '#946239', '#941400']
 
 profilelabels = {
     'rho':r'$\log \left< \rho / \left( \mathrm{M_\odot} / \mathrm{pc}^3 \right) \right>$',
@@ -21,6 +21,7 @@ from astropy import units
 from silx.io.dictdump import dicttoh5, h5todict
 from tqdm import tqdm
 import os.path
+import h5py
 
 from scripts.simulations import *
 from abg_python.snapshot_utils import openSnapshot
@@ -285,11 +286,28 @@ def find_Rvir_SO(part, posC=None, halo=None, snapnum=None, useM200c=False):
     idx_vir = np.flatnonzero(Density <= rhovir)[0]
     return r[idx_vir], Masses[idx_vir] # return Rvir in units physical kpc, and Mvir in units Msun
     # simple linear interpolation with next closest point, and InterpolatedUnivariateSpline.roots() both seem to return approximately same Rvir as the 1 point method above.
+
+def get_halo_info_Rockstar(simdir, redshifts):
+    '''Returns halo centers, virial radii, and virial masses from Rockstar halo catalog in units pkpc and Msun.'''
+    f = h5py.File(os.path.join(simdir, 'halo/rockstar_dm/catalog_hdf5/tree.hdf5'), 'r')
+    OmegaM0, OmegaL0, h = f['cosmology:omega_matter'][()], f['cosmology:omega_lambda'][()], f['cosmology:hubble'][()]
+    
+    hostidxs = np.flatnonzero(f['host.index'][:] == np.arange(len(f['host.index'][:])))
+    snapshots = f['snapshot'][:][hostidxs]
+    zs = redshifts[snapshots]
+    sfs = 1/(1+zs)
+    
+    posCs = f['position'][:][hostidxs]*sfs[:,None] #physical kpc
+    Mvirs = f['mass.vir'][:][hostidxs] #Msun
+    Rvirs = [(Mvir / (4/3 * np.pi * deltavir(OmegaM0, OmegaL0, z) * rhocritz(OmegaM0, OmegaL0, z)))**(1/3) * 1e3 * h**(-2/3) for Mvir,z in zip(Mvirs, zs)] #physical kpc
+    
+    return dict(zip(snapshots, zip(posCs, Rvirs, Mvirs)))
+
 try:
     cache = h5todict(os.path.expanduser('~/fire3_mainsimulationset.h5'))
 except:
     cache = {}
-def load_allparticles(snapdir, snapnum, particle_types=[0,1,2,4,5], keys_to_extract={0:['Coordinates', 'Masses', 'Density', 'Temperature', 'InternalEnergy', 'CosmicRayEnergy'],1:['Coordinates', 'Masses'],2:['Coordinates', 'Masses'],4:['Coordinates', 'Masses'],5:['Coordinates', 'Masses']}, ptype_centering=1, Rvir=None, ahf_path=None, loud=1):
+def load_allparticles(snapdir, snapnum, particle_types=[0,1,2,4,5], keys_to_extract={0:['Coordinates', 'Masses', 'Density', 'Temperature', 'InternalEnergy', 'CosmicRayEnergy'],1:['Coordinates', 'Masses'],2:['Coordinates', 'Masses'],4:['Coordinates', 'Masses'],5:['Coordinates', 'Masses']}, ptype_centering=1, Rvir=None, ahf_path=None, use_ahf=True, loud=1):
     '''Loads all particle data from simulation directory `snapdir` for a snapshot  `snapnum`, and returns dict of dicts for each particle type.
 
     Notes:
@@ -317,21 +335,27 @@ def load_allparticles(snapdir, snapnum, particle_types=[0,1,2,4,5], keys_to_extr
     if loud:
         print(f"Loading redshift {part[particle_types[0]]['Redshift']}")
 
-    if os.path.basename(snapdir_orig) in cache and str(snapnum) in cache[os.path.basename(snapdir_orig)]:
-        posC = cache[os.path.basename(snapdir_orig)][str(snapnum)]['posC']
-        Rvir = cache[os.path.basename(snapdir_orig)][str(snapnum)]['Rvir']
-        Mvir = cache[os.path.basename(snapdir_orig)][str(snapnum)]['Mvir']
+    if use_ahf:
+        posC, Rvir, Mvir = load_AHF('', snapnum, hubble=part[particle_types[0]]['HubbleParam'], ahf_path=os.path.join(snapdir_orig, 'halo', 'ahf'), extra_names_to_read=['Mvir'])
+        Mvir /= part[particle_types[0]]['HubbleParam']
     else:
-        posC = halo_center_wrapper(part[ptype_centering], shrinkpercent=2.5, minparticles=1000, initialradiusfactor=1)[0] #most accurate parameters
-        Rvir, Mvir = find_Rvir_SO(part, posC)
-    # posC = halo_center_wrapper(part[ptype_centering])[0]
-    ###posC = halo_center_wrapper(part[ptype_centering], shrinkpercent=2.5, minparticles=1000, initialradiusfactor=1)[0] #most accurate parameters
-    # posC = halo_center_wrapper(part[ptype_centering], shrinkpercent=10, minparticles=1000, initialradiusfactor=1)[0] #pretty accurate parameters and 2x faster than shrinkpercent=2.5 (some minor problems, e.g. a small dip at z=6 for h29_noAGNfb)
+        if os.path.basename(snapdir_orig) in cache and str(snapnum) in cache[os.path.basename(snapdir_orig)]:
+            posC = cache[os.path.basename(snapdir_orig)][str(snapnum)]['posC']
+            Rvir = cache[os.path.basename(snapdir_orig)][str(snapnum)]['Rvir']
+            Mvir = cache[os.path.basename(snapdir_orig)][str(snapnum)]['Mvir']
+        else:
+            combined_part = {key: np.concatenate([part[ptype][key] for ptype in [0, 1, 4, 5] if key in part[ptype]]) for key in ['Coordinates', 'Masses']}
+            posC = halo_center_wrapper(combined_part, shrinkpercent=2.5, minparticles=1000, initialradiusfactor=1)[0] #most accurate parameters
+            # posC = halo_center_wrapper(part[ptype_centering])[0]#fast params to test#halo_center_wrapper(part[ptype_centering], shrinkpercent=2.5, minparticles=1000, initialradiusfactor=1)[0] #most accurate parameters
+            Rvir, Mvir = find_Rvir_SO(part, posC)
+        # posC = halo_center_wrapper(part[ptype_centering])[0]
+        ###posC = halo_center_wrapper(part[ptype_centering], shrinkpercent=2.5, minparticles=1000, initialradiusfactor=1)[0] #most accurate parameters
+        # posC = halo_center_wrapper(part[ptype_centering], shrinkpercent=10, minparticles=1000, initialradiusfactor=1)[0] #pretty accurate parameters and 2x faster than shrinkpercent=2.5 (some minor problems, e.g. a small dip at z=6 for h29_noAGNfb)
 
-    if Rvir == 'find_Rvir_SO': #Find Rvir and Mvir using SO method
-        Rvir, Mvir = find_Rvir_SO(part, posC)
-    if ahf_path:
-        _, Rvir = load_AHF('', snapnum, part[particle_types[0]]['Redshift'], hubble=part[particle_types[0]]['HubbleParam'], ahf_path=ahf_path, extra_names_to_read=[])
+        if Rvir == 'find_Rvir_SO': #Find Rvir and Mvir using SO method
+            Rvir, Mvir = find_Rvir_SO(part, posC)
+        if ahf_path:
+            _, Rvir = load_AHF('', snapnum, part[particle_types[0]]['Redshift'], hubble=part[particle_types[0]]['HubbleParam'], ahf_path=ahf_path, extra_names_to_read=[])
 
     for ptype, p_i in part.items():
         p_i['posC'] = posC #halo center in units physical kpc

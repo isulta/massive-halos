@@ -28,17 +28,17 @@ PaperSimNames = {
     'm12u_NoBH':'m12u_r28000',
     # 'm12x_NoBH':'m12x_r28000',
     'm12x_NoBH':'m12x_r3500',
-    'm12b_NoBH' : 'm12b_m7e3_MHD_fire3_fireBH_Sep182021_hr_crdiffc690_sdp1e10_gacc31_fa0.5',
-    'm12c_NoBH' : 'm12c_m7e3_MHD_fire3_fireBH_Sep182021_hr_crdiffc690_sdp1e10_gacc31_fa0.5',
+    # 'm12b_NoBH' : 'm12b_m7e3_MHD_fire3_fireBH_Sep182021_hr_crdiffc690_sdp1e10_gacc31_fa0.5', BUG
+    # 'm12c_NoBH' : 'm12c_m7e3_MHD_fire3_fireBH_Sep182021_hr_crdiffc690_sdp1e10_gacc31_fa0.5', BUG
     'm12f_NoBH' : 'm12f_m7e3_MHD_fire3_fireBH_Sep182021_hr_crdiffc690_sdp1e10_gacc31_fa0.5',
-    'm12i_NoBH' : 'm12i_m7e3_MHD_fire3_fireBH_Sep182021_hr_crdiffc690_sdp1e10_gacc31_fa0.5',
-    'm12m_NoBH' : 'm12m_m7e3_MHD_fire3_fireBH_Sep182021_hr_crdiffc690_sdp1e10_gacc31_fa0.5',
+    # 'm12i_NoBH' : 'm12i_m7e3_MHD_fire3_fireBH_Sep182021_hr_crdiffc690_sdp1e10_gacc31_fa0.5', BUG
+    # 'm12m_NoBH' : 'm12m_m7e3_MHD_fire3_fireBH_Sep182021_hr_crdiffc690_sdp1e10_gacc31_fa0.5', BUG
     'm12q_NoBH' : 'm12q_m7e3_MHD_fire3_fireBH_Sep182021_hr_crdiffc690_sdp1e10_gacc31_fa0.5',
     'm12r_NoBH' : 'm12r_m7e3_MHD_fire3_fireBH_Sep182021_hr_crdiffc690_sdp1e10_gacc31_fa0.5',
     'm12w_NoBH' : 'm12w_m7e3_MHD_fire3_fireBH_Sep182021_hr_crdiffc690_sdp1e10_gacc31_fa0.5',
     'm12z_NoBH' : 'm12z_m4e3_MHD_fire3_fireBH_Sep182021_hr_crdiffc690_sdp1e10_gacc31_fa0.5',
-    'm12b_NoBH': 'm12b_m7e3_MHD_fire3_fireBH_Sep182021_hr_crdiffc690_sdp1e10_gacc31_fa0.5',
-    'm12i_NoBH': 'm12i_m7e3_MHD_fire3_fireBH_Sep182021_hr_crdiffc690_sdp1e10_gacc31_fa0.5',
+    # 'm12b_NoBH': 'm12b_m7e3_MHD_fire3_fireBH_Sep182021_hr_crdiffc690_sdp1e10_gacc31_fa0.5', BUG
+    # 'm12i_NoBH': 'm12i_m7e3_MHD_fire3_fireBH_Sep182021_hr_crdiffc690_sdp1e10_gacc31_fa0.5', BUG
     'm12f_NoBH': 'm12f_m7e3_MHD_fire3_fireBH_Sep182021_hr_crdiffc690_sdp1e10_gacc31_fa0.5',
     'm12f_BH': 'm12f_m7e3_MHD_fire3_fireBH_Sep182021_hr_crdiffc690_sdp2e-4_gacc31_fa0.5',
     'm12f_BHCR': 'm12f_m6e4_MHDCRspec1_fire3_fireBH_fireCR1_Oct252021_crdiffc1_sdp1e-4_gacc31_fa0.5_fcr1e-3_vw3000',
@@ -50,7 +50,16 @@ PaperSimNames = {
     'm13h113_BHCR': 'm13h113_m3e5_MHDCRspec1_fire3_fireBH_fireCR1_Oct252021_crdiffc1_sdp1e-4_gacc31_fa0.5_fcr1e-3_vw3000',
     'm13h206_NoBH': 'm13h206_m3e5_MHD_fire3_fireBH_Sep182021_crdiffc690_sdp1e10_gacc31_fa0.5',
     'm13h206_BH': 'm13h206_m3e4_MHD_fire3_fireBH_Sep182021_hr_crdiffc690_sdp3e-4_gacc31_fa0.5',
-    'm13h206_BHCR': 'm13h206_m3e5_MHDCRspec1_fire3_fireBH_fireCR1_Oct252021_crdiffc1_sdp1e-4_gacc31_fa0.5_fcr1e-3_vw3000'
+    'm13h206_BHCR': 'm13h206_m3e5_MHDCRspec1_fire3_fireBH_fireCR1_Oct252021_crdiffc1_sdp1e-4_gacc31_fa0.5_fcr1e-3_vw3000',
+    'm12b_fire2_NoBH': 'm12b_r7100',
+    'm12c_fire2_NoBH': 'm12c_r7100',
+    'm12m_fire2_NoBH': 'm12m_r7100',
+    'm12r_fire2_NoBH': 'm12r_r7100',
+    'm12w_fire2_NoBH': 'm12w_r7100',
+    'm12z_fire2_NoBH': 'm12z_r4200',
+    'm12f_fire2_NoBH': 'm12f_r7100',
+    'm12i_fire2_NoBH': 'm12i_r7100',
+    'm12i_fire2lowres_NoBH': 'm12i_r57000'
 }
 
 '''Sarah functions'''
@@ -138,7 +147,10 @@ def sim_path(params, machine=None):
 
 # Returns path of FIRE-3 sims on Frontera
 def sim_path_fire3(filename, quest=False):
-    if quest: return os.path.join( '/projects/b1026/isultan/fire3', filename )
+    if quest: 
+        if os.path.exists( os.path.join( '/projects/b1026/isultan/fire3', filename ) ): return os.path.join( '/projects/b1026/isultan/fire3', filename )
+        if os.path.exists( os.path.join( '/projects/b1026/snapshots/fire3_m12_new', filename ) ): return os.path.join( '/projects/b1026/snapshots/fire3_m12_new', filename )
+        raise Exception('Path on quest not found for ', filename)
     filebase = '/scratch3/01799/phopkins/fire3_suite_done'
     if filename == 'm13h02_m3e5_MHD_fire3_fireBH_Sep052021_crdiffc690_sdp1e-4_gacc31_fa0.5':
         simbase = 'm13h002_m3e5'
